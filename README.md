@@ -1,7 +1,7 @@
 # cos-tool
 
 Transforms PromQL/LogQL expressions on the fly, and validates that Alert rules
-can be parsed successfully by either Prometheus or Loki.
+can be loaded successfully by either Prometheus or Loki.
 
 ## Usage
 
