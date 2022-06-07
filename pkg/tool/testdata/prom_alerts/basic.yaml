@@ -1,0 +1,8 @@
+groups:
+  - name: test
+    rules:
+      - alert: CPUOverUse
+        expr: process_cpu_seconds_total > 0.12
+        for: 0m
+        labels:
+          severity: Low

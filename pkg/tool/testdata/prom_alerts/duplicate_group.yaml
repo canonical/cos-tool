@@ -1,0 +1,15 @@
+groups:
+  - name: yolo
+    rules:
+      - alert: CPUOverUse
+        expr: process_cpu_seconds_total > 0.12
+        for: 0m
+        labels:
+          severity: Low
+  - name: yolo
+    rules:
+      - alert: CPUOverUse
+        expr: process_cpu_seconds_total > 0.12
+        for: 0m
+        labels:
+          severity: Low

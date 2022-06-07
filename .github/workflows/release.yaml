@@ -1,0 +1,103 @@
+name: Release
+
+on:
+  push:
+    branches:
+      - main
+
+permissions:
+  contents: write  # Enable the creation of GitHub releases
+
+jobs:
+  lint:
+    name: Lint
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v2
+        with:
+          fetch-depth: 0
+      - name: Set up Go
+        uses: actions/setup-go@v2
+        with:
+          go-version: 1.16.x
+      - name: Install linter
+        run: |
+          curl -sSfL https://raw.githubusercontent.com/golangci/golangci-lint/master/install.sh | sh -s -- -b $(go env GOPATH)/bin v1.42.1
+      - name: Lint files
+        run: |
+          golangci-lint run
+  test:
+    name: Test
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v2
+        with:
+          fetch-depth: 0
+      - name: Set up Go
+        uses: actions/setup-go@v2
+        with:
+          go-version: 1.16.x
+      - name: Run tests
+        run: |
+          go test ./... -coverprofile coverage.out
+  build:
+    name: Release
+    runs-on: ubuntu-latest
+    needs:
+      - test
+      - lint
+    env:
+      CGO_ENABLED: 0
+      TAG: ${{ github.event.release.tag_name }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v2
+        # Do not use fetch-depth 0 as suggested by Goreleaser,
+        # because we run with --snapshot and do not want issues with
+        # our non-SemVer tags
+      - name: Set up Go
+        uses: actions/setup-go@v2
+        with:
+          go-version: 1.16.x
+      - name: Create artifacts
+        uses: goreleaser/goreleaser-action@v2
+        with:
+          distribution: goreleaser
+          version: latest
+          # Build on snapshot to avoid problems with our non SemVer tags
+          args: --snapshot
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      # At this point we still don't have a tag. It is just as well, because
+      # we do not want a SemVer tag, and having a non SemVer tag would break
+      # GoReleaser (https://goreleaser.com/limitations/semver/).
+      - name: Upload amd64 assets
+        uses: actions/upload-artifact@v3
+        with:
+          name: cos-tool-amd64
+          path: dist/cos-tool_linux_amd64/cos-tool
+      - name: Upload arm64 assets
+        uses: actions/upload-artifact@v3
+        with:
+          name: cos-tool-arm64
+          path: dist/cos-tool_linux_arm64/cos-tool
+      - name: Create tag
+        uses: rickstaa/action-create-tag@v1
+        with:
+          tag: "rev${{ steps.getrev.outputs.rev }}"
+          message: "Revision ${{ steps.getrev.outputs.rev }}"
+      - name: Prepare artifacts for attachment to release
+        run: |
+          mkdir -p artifacts/
+          mv dist/cos-tool_linux_amd64/cos-tool artifacts/cos-tool-amd64
+          mv dist/cos-tool_linux_arm64/cos-tool artifacts/cos-tool-arm64
+      - name: Create GitHub release
+        uses: ncipollo/release-action@v1
+        with:
+          name: "Revision ${{ steps.getrev.outputs.rev }}"
+          omitBody: "true"
+          artifacts: "artifacts/*"
+          tag: "rev${{ steps.getrev.outputs.rev }}"
+          token: ${{ secrets.GITHUB_TOKEN }}
