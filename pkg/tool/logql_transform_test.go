@@ -27,7 +27,7 @@ func TestShouldApplyLabelMatcherToLogQLSelector(t *testing.T) {
 		{
 			Input:    `{cool="breeze"} |= "weather"`,
 			Matchers: map[string]string{"hot": "sunrays", "dance": "macarena"},
-			Expected: `{cool="breeze", hot="sunrays", dance="macarena"} |= "weather"`,
+			Expected: `{cool="breeze", dance="macarena", hot="sunrays"} |= "weather"`,
 		},
 	}
 	for _, c := range cases {

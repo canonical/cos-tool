@@ -2,6 +2,7 @@ package tool
 
 import (
 	"fmt"
+	"sort"
 
 	parser "github.com/canonical/cos-tool/pkg/logql/syntax"
 	"github.com/canonical/cos-tool/pkg/lokiruler"
@@ -30,6 +31,14 @@ func (p *LogQL) Transform(arg string, matchers *map[string]string) (string, erro
 	p.expr = exp
 	p.matchers = matchers
 
+	sm := []string{}
+	for m := range *matchers {
+		sm = append(sm, m)
+	}
+
+	sort.Strings(sm)
+	p.sortedMatchers = &sm
+
 	p.expr.Walk(p.traverse)
 	return p.expr.String(), nil
 }
@@ -47,7 +56,7 @@ func (p *LogQL) traverse(e interface{}) {
 
 func (p *LogQL) injectLabelMatcher(e *parser.MatchersExpr) {
 	appendMatchers := make([]*labels.Matcher, 0, len(*p.matchers))
-	for key, val := range *(p.matchers) {
+	for _, key := range *(p.sortedMatchers) {
 		existingMatchers := e.Matchers()
 		var found = false
 		for _, existing := range existingMatchers {
@@ -62,7 +71,7 @@ func (p *LogQL) injectLabelMatcher(e *parser.MatchersExpr) {
 		appendMatchers = append(appendMatchers, &labels.Matcher{
 			Type:  labels.MatchEqual,
 			Name:  key,
-			Value: val,
+			Value: (*p.matchers)[key],
 		})
 	}
 	e.AppendMatchers(appendMatchers)

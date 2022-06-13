@@ -20,8 +20,9 @@ type PromQL struct {
 }
 
 type LogQL struct {
-	expr     logqlparser.Expr
-	matchers *map[string]string
+	expr           logqlparser.Expr
+	matchers       *map[string]string
+	sortedMatchers *[]string
 }
 
 type Checker interface {
