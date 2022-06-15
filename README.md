@@ -34,6 +34,7 @@ Running:
 
 ```bash
 $ ./cos-tool transform \
+    --format logql \
     --label-matcher juju_model=lma \
     --label-matcher juju_model_uuid=12345 \
     --label-matcher juju_application=proxy \
