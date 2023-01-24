@@ -15,7 +15,7 @@ func readFile(filepath string) []byte {
 }
 func TestParsePromAlertFileSuccess(t *testing.T) {
 	p := &tool.PromQL{}
-	_, errs := p.Validate(readFile(filepath.Join("testdata/prom_alerts", "basic.yaml")))
+	_, errs := p.ValidateRules(readFile(filepath.Join("testdata/prom_alerts", "basic.yaml")))
 	assert.Nil(t, errs, "unexpected errors parsing file")
 }
 
@@ -37,7 +37,7 @@ func TestParsePromAlertFileFailure(t *testing.T) {
 	p := &tool.PromQL{}
 
 	for _, c := range table {
-		_, errs := p.Validate(readFile(filepath.Join("testdata/prom_alerts", c.filename)))
+		_, errs := p.ValidateRules(readFile(filepath.Join("testdata/prom_alerts", c.filename)))
 		assert.NotNil(t, errs, "Expected error parsing %s but got none", c.filename)
 		assert.Contains(t, errs.Error(), c.errMsg, "Expected error for %s.", c.filename)
 	}

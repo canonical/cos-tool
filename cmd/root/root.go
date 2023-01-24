@@ -58,8 +58,8 @@ var app = &cli.App{
 			},
 		},
 		{
-			Name:    "validate",
-			Aliases: []string{"v", "lint", "l"},
+			Name:    "validate-rules",
+			Aliases: []string{"v", "lint", "l", "validate"},
 			Action: func(c *cli.Context) error {
 				args := c.Args()
 
@@ -75,9 +75,30 @@ var app = &cli.App{
 						return err
 					}
 
-					_, err = validator.Validate(data)
+					_, err = validator.ValidateRules(data)
 					if err != nil {
 						return cli.Exit(err, 1)
+					}
+				}
+
+				return nil
+			},
+		},
+		{
+			Name: "validate-config",
+			Action: func(c *cli.Context) error {
+				args := c.Args()
+
+				if args.Len() < 1 {
+					log.Fatal("Expected at least one rule file to validate.")
+				}
+
+				validator := c.Context.Value("impl").(tool.Checker)
+
+				for _, f := range args.Slice() {
+					err := validator.ValidateConfig(f)
+					if err != nil {
+						return err
 					}
 				}
 

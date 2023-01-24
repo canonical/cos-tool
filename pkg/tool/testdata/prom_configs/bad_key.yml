@@ -1,0 +1,28 @@
+global:
+  evaluation_interval: 1m
+  scrape_interval: 1m
+  scrape_timeout: 10s
+rule_files:
+- /etc/prometheus/rules/juju_*.rules
+scrape_configs:
+- honor_labels: true
+  job_name: my_scrape_job
+  metrics_path: /metrics
+  relabel_configs:
+  - regex: (.*)
+    separator: _
+    source_labels:
+    - juju_model
+    - juju_model_uuid
+    - juju_application
+    - juju_unit
+    target_label: instance
+  static_configs:
+  - labels:
+      juju_application: loki
+      juju_charm: loki-k8s
+      juju_model: lma
+      juju_model_uuid: 6e33e98f-61fe-4ced-85ec-6414252f6d30
+      juju_unit: loki/0
+    not_a_real_prometheus_key:
+    - 192.168.1.1:3100
