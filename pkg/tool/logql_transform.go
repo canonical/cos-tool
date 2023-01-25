@@ -10,7 +10,7 @@ import (
 	"github.com/prometheus/prometheus/model/rulefmt"
 )
 
-func (p *LogQL) Validate(data []byte) (*rulefmt.RuleGroups, error) {
+func (p *LogQL) ValidateRules(data []byte) (*rulefmt.RuleGroups, error) {
 	// Expose the backend parser
 	rg, errs := lokiruler.Load(data)
 
@@ -19,6 +19,10 @@ func (p *LogQL) Validate(data []byte) (*rulefmt.RuleGroups, error) {
 	}
 
 	return rg, nil
+}
+
+func (p *LogQL) ValidateConfig(filename string) (error) {
+	return fmt.Errorf("Loki not supported for validate-config")
 }
 
 func (p *LogQL) Transform(arg string, matchers *map[string]string) (string, error) {
