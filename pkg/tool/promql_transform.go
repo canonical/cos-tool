@@ -3,24 +3,24 @@ package tool
 import (
 	"fmt"
 	"github.com/go-kit/log"
+	"github.com/prometheus/prometheus/config"
 	"github.com/prometheus/prometheus/model/labels"
 	"github.com/prometheus/prometheus/model/rulefmt"
 	"github.com/prometheus/prometheus/promql/parser"
-	"github.com/prometheus/prometheus/config"
 )
 
-func (p *PromQL) ValidateRules(data []byte) (*rulefmt.RuleGroups, error) {
+func (p *PromQL) ValidateRules(filename string, data []byte) (*rulefmt.RuleGroups, error) {
 	// Expose the backend parser for alert rule validation
 	rg, errs := rulefmt.Parse(data)
 
 	if len(errs) > 0 {
-		return rg, fmt.Errorf("error validating: %+v", errs[0])
+		return rg, fmt.Errorf("error validating %s: %+v", filename, errs)
 	}
 	return rg, nil
 }
 
 // This function only checks syntax. If more in depth checking is needed, it must be expanded.
-func(p *PromQL) ValidateConfig(filename string) (error) {
+func (p *PromQL) ValidateConfig(filename string) error {
 	// Assuming here that agent mode is false. If we support agent mode in the future, this needs to be revisited.
 	_, err := config.LoadFile(filename, false, false, log.NewNopLogger())
 	if err != nil {

@@ -27,8 +27,8 @@ type LogQL struct {
 
 type Checker interface {
 	Transform(arg string, matchers *map[string]string) (string, error)
-	ValidateRules(data []byte) (*rulefmt.RuleGroups, error)
-	ValidateConfig(filename string) (error)
+	ValidateRules(filename string, data []byte) (*rulefmt.RuleGroups, error)
+	ValidateConfig(filename string) error
 }
 
 func GetLabelMatchers(flags []string) (map[string]string, error) {

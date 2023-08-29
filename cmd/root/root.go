@@ -3,7 +3,6 @@ package root
 import (
 	"context"
 	"fmt"
-	"io/ioutil"
 	"log"
 	"os"
 	"strings"
@@ -70,12 +69,12 @@ var app = &cli.App{
 				validator := c.Context.Value("impl").(tool.Checker)
 
 				for _, f := range args.Slice() {
-					data, err := ioutil.ReadFile(f)
+					data, err := os.ReadFile(f)
 					if err != nil {
 						return err
 					}
 
-					_, err = validator.ValidateRules(data)
+					_, err = validator.ValidateRules(f, data)
 					if err != nil {
 						return cli.Exit(err, 1)
 					}
