@@ -2,26 +2,26 @@ package tool
 
 import (
 	"fmt"
-	"sort"
-
 	parser "github.com/canonical/cos-tool/pkg/logql/syntax"
 	"github.com/canonical/cos-tool/pkg/lokiruler"
 	"github.com/prometheus/prometheus/model/labels"
 	"github.com/prometheus/prometheus/model/rulefmt"
+	"sort"
 )
 
-func (p *LogQL) ValidateRules(data []byte) (*rulefmt.RuleGroups, error) {
+func (p *LogQL) ValidateRules(filename string, data []byte) (*rulefmt.RuleGroups, error) {
 	// Expose the backend parser
 	rg, errs := lokiruler.Load(data)
 
 	if len(errs) > 0 {
-		return rg, fmt.Errorf("error validating: %+v", errs)
+
+		return rg, fmt.Errorf("error validating %s: %+v", filename, errs)
 	}
 
 	return rg, nil
 }
 
-func (p *LogQL) ValidateConfig(filename string) (error) {
+func (p *LogQL) ValidateConfig(filename string) error {
 	return fmt.Errorf("Loki not supported for validate-config")
 }
 
