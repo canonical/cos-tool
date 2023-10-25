@@ -251,7 +251,7 @@ go.uber.org/goleak/internal/stack
 # go4.org/intern v0.0.0-20220301175310-a089fc204883
 ## explicit; go 1.13
 go4.org/intern
-# go4.org/unsafe/assume-no-moving-gc v0.0.0-20211027215541-db492cf91b37
+# go4.org/unsafe/assume-no-moving-gc v0.0.0-20230525183740-e7c30c78aeb2
 ## explicit; go 1.11
 go4.org/unsafe/assume-no-moving-gc
 # golang.org/x/crypto v0.0.0-20220525230936-793ad666bf5e
