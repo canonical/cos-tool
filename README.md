@@ -1,5 +1,8 @@
 # cos-tool
 
+[![Release](https://github.com/canonical/cos-tool/actions/workflows/release.yaml/badge.svg)](https://github.com/canonical/cos-tool/actions/workflows/release.yaml)
+[![Discourse Status](https://img.shields.io/discourse/status?server=https%3A%2F%2Fdiscourse.charmhub.io&style=flat&label=CharmHub%20Discourse)](https://discourse.charmhub.io)
+
 Transforms PromQL/LogQL expressions on the fly, and validates that Alert rules
 can be loaded successfully by either Prometheus or Loki.
 
