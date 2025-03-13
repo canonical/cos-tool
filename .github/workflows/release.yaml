@@ -62,7 +62,7 @@ jobs:
         uses: actions/upload-artifact@v3
         with:
           name: cos-tool-arm64
-          path: dist/cos-tool_linux_arm64/cos-tool
+          path: dist/cos-tool_linux_arm64_v8.0/cos-tool
 
   ghrelease:
     name: Create GitHub Release
