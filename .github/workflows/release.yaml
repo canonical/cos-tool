@@ -66,7 +66,9 @@ jobs:
       - name: Upload ppc64le assets
         uses: actions/upload-artifact@v4
         with:
-          name: cos-tool-ppc64le
+          # Note: we use ppc64el rather than ppc64le because that's CRAFT_BUILD_FOR expects:
+          # https://github.com/canonical/craft-parts/blob/b472871d77572a42fd6b9749de2b6c1abcabc6a7/craft_parts/infos.py#L50
+          name: cos-tool-ppc64el
           path: dist/cos-tool_linux_ppc64le_power8/cos-tool
       - name: Upload s390x assets
         uses: actions/upload-artifact@v4
