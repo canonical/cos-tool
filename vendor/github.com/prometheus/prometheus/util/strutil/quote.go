@@ -114,10 +114,10 @@ func Unquote(s string) (t string, err error) {
 // or character literal represented by the string s.
 // It returns four values:
 //
-//	1) value, the decoded Unicode code point or byte value;
-//	2) multibyte, a boolean indicating whether the decoded character requires a multibyte UTF-8 representation;
-//	3) tail, the remainder of the string after the character; and
-//	4) an error that will be nil if the character is syntactically valid.
+//  1. value, the decoded Unicode code point or byte value;
+//  2. multibyte, a boolean indicating whether the decoded character requires a multibyte UTF-8 representation;
+//  3. tail, the remainder of the string after the character; and
+//  4. an error that will be nil if the character is syntactically valid.
 //
 // The second argument, quote, specifies the type of literal being parsed
 // and therefore which escaped quote character is permitted.
@@ -201,7 +201,7 @@ func unquoteChar(s string, quote byte) (value rune, multibyte bool, tail string,
 			err = ErrSyntax
 			return
 		}
-		for j := 0; j < 2; j++ { // One digit already; two more.
+		for j := range 2 { // One digit already; two more.
 			x := rune(s[j]) - '0'
 			if x < 0 || x > 7 {
 				err = ErrSyntax
