@@ -10,7 +10,7 @@ require (
 	github.com/json-iterator/go v1.1.12
 	github.com/pkg/errors v0.9.1
 	github.com/prometheus/common v0.34.0
-	github.com/prometheus/prometheus v1.8.2-0.20220406040511-1c1b174a8e98
+	github.com/prometheus/prometheus ce55e50
 	github.com/sirupsen/logrus v1.8.1
 	github.com/stretchr/testify v1.7.1
 	github.com/urfave/cli/v2 v2.8.1
