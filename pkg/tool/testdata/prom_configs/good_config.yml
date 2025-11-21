@@ -5,7 +5,10 @@ global:
 rule_files:
 - /etc/prometheus/rules/juju_*.rules
 scrape_configs:
-- honor_labels: true
+- basic_auth:
+    password: o1qRpYkqjgVzl53JEmpCFA
+    username: user-juju-metrics-r27
+  honor_labels: true
   job_name: my_scrape_job
   metrics_path: /metrics
   relabel_configs:
@@ -26,3 +29,28 @@ scrape_configs:
       juju_unit: loki/0
     targets:
     - 192.168.1.1:3100
+  tls_config:
+    ca: '-----BEGIN CERTIFICATE-----
+      MIIEEjCCAnqgAwIBAgIUaRtsaGcU6NkKLcQZFHTcFpCEIxQwDQYJKoZIhvcNAQEL
+      BQAwITENMAsGA1UEChMESnVqdTEQMA4GA1UEAxMHanVqdS1jYTAeFw0yNTEwMTYx
+      MzU2MThaFw0zNTEwMTYxNDAxMThaMCExDTALBgNVBAoTBEp1anUxEDAOBgNVBAMT
+      B2p1anUtY2EwggGiMA0GCSqGSIb3DQEBAQUAA4IBjwAwggGKAoIBgQDJkvW1TPw6
+      qIHNPXiAroVc5bMrRQwxoZl3rJT/8HGcNgcyUu8A6PzXiSnYm+QXE+FQTDohb/ts
+      HrGj+yb3jwI93lUcBomFhp/iujlglM7sHhEzeMTh0aHgcEXhUTfSwGYhzURAtOW7
+      2MYXpfxCpYaHP5cqNOu1Z/3HhBSqrNli1dcdvVvxLsvMlBrgoEmJpQlILMESV9GR
+      +Ak2VQzdxRw4JyACVqGaUx4I8yQ94Ylymn/6Pv08x1ycXGumBhfPIa4yYMer5L6H
+      r9DKY5d3C1S+WshKd/g7mgq5fCibRrXuVgzSytYQSuyOz0FZUhiGiActKV9hY2Ej
+      ZQkcz0Z7w3t6ZaaB5T3G/fP2mcuE0fs+zQheXSsIV6NL9jt3ySELW9L8bTCypL5X
+      mxKa6MdhLGk6GbsfELdwdHNdoCOJiyJnEFtIroZg4OrwOgEUpJMDaqM7cCUmAFxt
+      zCpmgty7dprq/Qracv7YOgsxClFzRlKGNCwE0sFL3UtqWTm2CNHl95sCAwEAAaNC
+      MEAwDgYDVR0PAQH/BAQDAgKkMA8GA1UdEwEB/wQFMAMBAf8wHQYDVR0OBBYEFOnf
+      BFmKKx+djZMm2cZv+d3zicJSMA0GCSqGSIb3DQEBCwUAA4IBgQC1UEOEOv2KQnKD
+      ZgACxokMbEnatMVe0GceRxCA78rKYlM/E5KM0aKxgmhwTSzE10gW08xjHAxZxpUs
+      SuJ/OJ1u3CRDz5KHtSfkpIIVdQhhgAchkyZ+qiJt7q85t0hL0uq/nQ/4s23uQVSB
+      uve62DZDkXBTGU+ky75/GM2TPoVsSU+GUOpsbUUbUVI0Sgafrhd2AJ4zmBjkrtOn
+      rlMPWdRgdiuuom1X2iWc3auFJS8AwjyI14/0SgYMOISGs+mUcA68om4j/c0YWZMI
+      AVcHjoq+MBR+chlihBB9RTDznaW3u43XzSkTFch1nNJRanj6eGwhfoA4RMGhxX8p
+      iBMp8FAPHuFsTFg9F+cwxvoSEg/DJrpd6ekolR2dtVFi/rWMNoAE4Ze08HVj2Ilw
+      kJKpEB/0mcrtt7/DeS/l9hRV70J8jUJrgHfO+kpWcv7hO4nfZ860U/Tbo5TT76jd
+      c8nV41o19qHB+buEh19Bl4pBAvJvKXJQKVMpv9NMjEcHZBQ7+Xw=
+      -----END CERTIFICATE-----'
