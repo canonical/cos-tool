@@ -27,7 +27,7 @@ scrape_configs:
     not_a_real_prometheus_key:
     - 192.168.1.1:3100
   tls_config:
-    cas: '-----BEGIN CERTIFICATE-----
+    ca_file: '-----BEGIN CERTIFICATE-----
       MIIEEjCCAnqgAwIBAgIUaRtsaGcU6NkKLcQZFHTcFpCEIxQwDQYJKoZIhvcNAQEL
       BQAwITENMAsGA1UEChMESnVqdTEQMA4GA1UEAxMHanVqdS1jYTAeFw0yNTEwMTYx
       MzU2MThaFw0zNTEwMTYxNDAxMThaMCExDTALBgNVBAoTBEp1anUxEDAOBgNVBAMT
