@@ -17,6 +17,7 @@ scrape_configs:
     - juju_application
     - juju_unit
     target_label: instance
+  scheme: https
   static_configs:
   - labels:
       juju_application: loki
@@ -26,3 +27,10 @@ scrape_configs:
       juju_unit: loki/0
     targets:
     - 192.168.1.1:3100
+  tls_config:
+    ca: '-----BEGIN CERTIFICATE-----
+      MIIEEjCCAnqgAwIBAgIUaRtsaGcU6NkKLcQZFHTcFpCEIxQwDQYJKoZIhvcNAQEL
+      c8nV41o19qHB+buEh19Bl4pBAvJvKXJQKVMpv9NMjEcHZBQ7+Xw=
+      -----END CERTIFICATE-----
+      '
+    server_name: juju-apiserver
