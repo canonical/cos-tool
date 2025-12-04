@@ -7,7 +7,7 @@ import (
 	"time"
 	"unicode"
 
-	"github.com/dustin/go-humanize"
+	humanize "github.com/dustin/go-humanize"
 	"github.com/prometheus/prometheus/model/labels"
 
 	"github.com/canonical/cos-tool/pkg/logql/logqlmodel"
