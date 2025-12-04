@@ -26,7 +26,7 @@ type Expr interface {
 }
 
 func Clone(e Expr) (Expr, error) {
-	return ParseExpr(e.String())
+	return ParseExpr(fmt.Sprintf("%v", e))
 }
 
 // implicit holds default implementations
@@ -76,7 +76,7 @@ func (m MultiStageExpr) stages() ([]log.Stage, error) {
 	for _, e := range m {
 		p, err := e.Stage()
 		if err != nil {
-			return nil, logqlmodel.NewStageError(e.String(), err)
+			return nil, logqlmodel.NewStageError(fmt.Sprintf("%v", e), err)
 		}
 		if p == log.NoopStage {
 			continue
@@ -89,7 +89,7 @@ func (m MultiStageExpr) stages() ([]log.Stage, error) {
 func (m MultiStageExpr) String() string {
 	var sb strings.Builder
 	for i, e := range m {
-		sb.WriteString(e.String())
+		sb.WriteString(fmt.Sprintf("%v", e))
 		if i+1 != len(m) {
 			sb.WriteString(" ")
 		}
@@ -552,7 +552,7 @@ type LogRange struct {
 // impls Stringer
 func (r LogRange) String() string {
 	var sb strings.Builder
-	sb.WriteString(r.Left.String())
+	sb.WriteString(fmt.Sprintf("%v", r.Left))
 	if r.Unwrap != nil {
 		sb.WriteString(r.Unwrap.String())
 	}
@@ -899,9 +899,9 @@ func canInjectVectorGrouping(vecOp, rangeOp string) bool {
 func (e *VectorAggregationExpr) String() string {
 	var params []string
 	if e.Params != 0 {
-		params = []string{fmt.Sprintf("%d", e.Params), e.Left.String()}
+		params = []string{fmt.Sprintf("%d", e.Params), fmt.Sprintf("%v", e.Left)}
 	} else {
-		params = []string{e.Left.String()}
+		params = []string{fmt.Sprintf("%v", e.Left)}
 	}
 	return formatOperation(e.Operation, e.Grouping, params...)
 }
@@ -1014,7 +1014,7 @@ func (e *BinOpExpr) String() string {
 			}
 		}
 	}
-	return fmt.Sprintf("(%s %s %s)", e.SampleExpr.String(), op, e.RHS.String())
+	return fmt.Sprintf("(%s %s %s)", fmt.Sprintf("%v", e.SampleExpr), op, fmt.Sprintf("%v", e.RHS))
 }
 
 // impl SampleExpr
@@ -1444,7 +1444,7 @@ func (e *LabelReplaceExpr) String() string {
 	var sb strings.Builder
 	sb.WriteString(OpLabelReplace)
 	sb.WriteString("(")
-	sb.WriteString(e.Left.String())
+	sb.WriteString(fmt.Sprintf("%v", e.Left))
 	sb.WriteString(",")
 	sb.WriteString(strconv.Quote(e.Dst))
 	sb.WriteString(",")
