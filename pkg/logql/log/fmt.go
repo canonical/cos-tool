@@ -7,7 +7,7 @@ import (
 	"text/template"
 	"text/template/parse"
 
-	"github.com/Masterminds/sprig/v3"
+	sprig "github.com/Masterminds/sprig/v3"
 	"github.com/grafana/regexp"
 
 	"github.com/canonical/cos-tool/pkg/logql/logqlmodel"
@@ -139,7 +139,7 @@ func (lf *LineFormatter) Process(line []byte, lbs *LabelsBuilder) ([]byte, bool)
 }
 
 func (lf *LineFormatter) RequiredLabelNames() []string {
-	return uniqueString(listNodeFields([]parse.Node{lf.Root}))
+	return uniqueString(listNodeFields([]parse.Node{lf.Template.Root}))
 }
 
 func listNodeFields(nodes []parse.Node) []string {
