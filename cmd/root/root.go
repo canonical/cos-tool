@@ -8,7 +8,7 @@ import (
 	"strings"
 
 	"github.com/canonical/cos-tool/pkg/tool"
-	"github.com/urfave/cli/v2"
+	cli "github.com/urfave/cli/v2"
 )
 
 var app = &cli.App{
