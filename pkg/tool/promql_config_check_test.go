@@ -11,19 +11,19 @@ import (
 func TestValidateConfig(t *testing.T) {
 	test_cases := []struct {
 		filename string
-		err bool
+		err      bool
 	}{
 		{
 			filename: "good_config.yml",
-			err: false,
+			err:      false,
 		},
 		{
 			filename: "bad_yaml.yml",
-			err: true,
+			err:      true,
 		},
 		{
 			filename: "bad_key.yml",
-			err: true,
+			err:      true,
 		},
 	}
 
