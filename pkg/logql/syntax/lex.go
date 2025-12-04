@@ -7,7 +7,7 @@ import (
 	"unicode"
 	"unicode/utf8"
 
-	"github.com/dustin/go-humanize"
+	humanize "github.com/dustin/go-humanize"
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/util/strutil"
 
@@ -119,12 +119,12 @@ type lexer struct {
 }
 
 func (l *lexer) Lex(lval *exprSymType) int {
-	r := l.Scan()
+	r := l.Scanner.Scan()
 
 	switch r {
 	case '#':
 		// Scan until a newline or EOF is encountered
-		for next := l.Peek(); !(next == '\n' || next == scanner.EOF); next = l.Next() {
+		for next := l.Scanner.Peek(); !(next == '\n' || next == scanner.EOF); next = l.Scanner.Next() {
 		}
 
 		return l.Lex(lval)
@@ -133,7 +133,7 @@ func (l *lexer) Lex(lval *exprSymType) int {
 		return 0
 
 	case scanner.Int, scanner.Float:
-		numberText := l.TokenText()
+		numberText := l.Scanner.TokenText()
 
 		duration, ok := tryScanDuration(numberText, &l.Scanner)
 		if ok {
@@ -152,7 +152,7 @@ func (l *lexer) Lex(lval *exprSymType) int {
 
 	case scanner.String, scanner.RawString:
 		var err error
-		tokenText := l.TokenText()
+		tokenText := l.Scanner.TokenText()
 		if !utf8.ValidString(tokenText) {
 			l.Error("invalid UTF-8 rune")
 			return 0
@@ -168,7 +168,7 @@ func (l *lexer) Lex(lval *exprSymType) int {
 	// scanning duration tokens
 	if r == '[' {
 		l.builder.Reset()
-		for r := l.Next(); r != scanner.EOF; r = l.Next() {
+		for r := l.Scanner.Next(); r != scanner.EOF; r = l.Scanner.Next() {
 			if r == ']' {
 				i, err := model.ParseDuration(l.builder.String())
 				if err != nil {
@@ -184,14 +184,14 @@ func (l *lexer) Lex(lval *exprSymType) int {
 		return 0
 	}
 
-	tokenText := l.TokenText()
-	tokenNext := tokenText + string(l.Peek())
+	tokenText := l.Scanner.TokenText()
+	tokenNext := tokenText + string(l.Scanner.Peek())
 	if tok, ok := functionTokens[tokenNext]; ok {
 		// create a copy to advance to the entire token for testing suffix
 		sc := l.Scanner
 		sc.Next()
 		if isFunction(sc) {
-			l.Next()
+			l.Scanner.Next()
 			return tok
 		}
 	}
@@ -205,7 +205,7 @@ func (l *lexer) Lex(lval *exprSymType) int {
 	}
 
 	if tok, ok := tokens[tokenNext]; ok {
-		l.Next()
+		l.Scanner.Next()
 		return tok
 	}
 
@@ -218,7 +218,7 @@ func (l *lexer) Lex(lval *exprSymType) int {
 }
 
 func (l *lexer) Error(msg string) {
-	l.errs = append(l.errs, logqlmodel.NewParseError(msg, l.Line, l.Column))
+	l.errs = append(l.errs, logqlmodel.NewParseError(msg, l.Scanner.Position.Line, l.Scanner.Position.Column))
 }
 
 func tryScanDuration(number string, l *scanner.Scanner) (time.Duration, bool) {
