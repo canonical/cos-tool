@@ -96,6 +96,14 @@ var exprErrorMessages = [...]struct {
 /*	tool for yacc output	*/
 
 var (
+	// exprDebug is disabled by default to prevent crypto/x509 vulnerabilities:
+	// GO-2025-4175: Improper application of excluded DNS name constraints when
+	//   verifying wildcard names (can lead to certificate validation bypass)
+	// GO-2025-4155: Excessive resource consumption when printing error strings
+	//   for host certificate validation (can lead to DoS via cert errors)
+	// These vulnerabilities are triggered when debug level >= 4 uses fmt.Printf
+	// on parsing tokens that may contain certificate validation error details.
+	// Enable only when necessary for debugging patterns in controlled environments.
 	exprDebug        = 0
 	exprErrorVerbose = false
 )
