@@ -12,8 +12,9 @@ import (
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/model/rulefmt"
 	"github.com/prometheus/prometheus/model/timestamp"
+	"github.com/prometheus/prometheus/promql"
 	"github.com/prometheus/prometheus/template"
-	"gopkg.in/yaml.v3"
+	yaml "gopkg.in/yaml.v3"
 )
 
 func Load(data []byte) (*rulefmt.RuleGroups, []error) {
@@ -62,7 +63,7 @@ func ValidateGroups(grps ...rulefmt.RuleGroup) (errs []error) {
 		set[g.Name] = struct{}{}
 
 		for _, r := range g.Rules {
-			if err := validateRuleNode(&r, g.Name); err != nil {
+			if err := validateRule(&r, g.Name); err != nil {
 				errs = append(errs, err)
 			}
 		}
@@ -71,35 +72,35 @@ func ValidateGroups(grps ...rulefmt.RuleGroup) (errs []error) {
 	return errs
 }
 
-func validateRuleNode(r *rulefmt.RuleNode, groupName string) error {
-	if r.Record.Value != "" && r.Alert.Value != "" {
+func validateRule(r *rulefmt.Rule, groupName string) error {
+	if r.Record != "" && r.Alert != "" {
 		return errors.Errorf("only one of 'record' and 'alert' must be set")
 	}
 
-	if r.Record.Value == "" && r.Alert.Value == "" {
+	if r.Record == "" && r.Alert == "" {
 		return errors.Errorf("one of 'record' or 'alert' must be set")
 	}
 
-	if r.Expr.Value == "" {
+	if r.Expr == "" {
 		return errors.Errorf("field 'expr' must be set in rule")
-	} else if _, err := syntax.ParseExpr(r.Expr.Value); err != nil {
-		return errors.Wrapf(err, "could not parse expression for record '%s' in group '%s'", r.Record.Value, groupName)
+	} else if _, err := syntax.ParseExpr(r.Expr); err != nil {
+		return errors.Wrapf(err, "could not parse expression for record '%s' in group '%s'", r.Record, groupName)
 	}
 
-	if r.Record.Value != "" {
+	if r.Record != "" {
 		if len(r.Annotations) > 0 {
 			return errors.Errorf("invalid field 'annotations' in recording rule")
 		}
 		if r.For != 0 {
 			return errors.Errorf("invalid field 'for' in recording rule")
 		}
-		if !model.IsValidMetricName(model.LabelValue(r.Record.Value)) {
-			return errors.Errorf("invalid recording rule name: %s", r.Record.Value)
+		if !model.UTF8Validation.IsValidMetricName(r.Record) {
+			return errors.Errorf("invalid recording rule name: %s", r.Record)
 		}
 	}
 
 	for k, v := range r.Labels {
-		if !model.LabelName(k).IsValid() || k == model.MetricNameLabel {
+		if !model.UTF8Validation.IsValidLabelName(k) || k == model.MetricNameLabel {
 			return errors.Errorf("invalid label name: %s", k)
 		}
 
@@ -109,7 +110,7 @@ func validateRuleNode(r *rulefmt.RuleNode, groupName string) error {
 	}
 
 	for k := range r.Annotations {
-		if !model.LabelName(k).IsValid() {
+		if !model.UTF8Validation.IsValidLabelName(k) {
 			return errors.Errorf("invalid annotation name: %s", k)
 		}
 	}
@@ -123,14 +124,14 @@ func validateRuleNode(r *rulefmt.RuleNode, groupName string) error {
 
 // testTemplateParsing checks if the templates used in labels and annotations
 // of the alerting rules are parsed correctly.
-func testTemplateParsing(rl *rulefmt.RuleNode) (errs []error) {
-	if rl.Alert.Value == "" {
+func testTemplateParsing(rl *rulefmt.Rule) (errs []error) {
+	if rl.Alert == "" {
 		// Not an alerting rule.
 		return errs
 	}
 
 	// Trying to parse templates.
-	tmplData := template.AlertTemplateData(map[string]string{}, map[string]string{}, "", 0)
+	tmplData := template.AlertTemplateData(map[string]string{}, map[string]string{}, "", promql.Sample{})
 	defs := []string{
 		"{{$labels := .Labels}}",
 		"{{$externalLabels := .ExternalLabels}}",
@@ -140,7 +141,7 @@ func testTemplateParsing(rl *rulefmt.RuleNode) (errs []error) {
 		tmpl := template.NewTemplateExpander(
 			context.TODO(),
 			strings.Join(append(defs, text), ""),
-			"__alert_"+rl.Alert.Value,
+			"__alert_"+rl.Alert,
 			tmplData,
 			model.Time(timestamp.FromTime(time.Now())),
 			nil,

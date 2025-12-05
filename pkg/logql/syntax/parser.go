@@ -3,7 +3,6 @@ package syntax
 import (
 	"errors"
 	"fmt"
-	"sort"
 	"strings"
 	"sync"
 	"text/scanner"
@@ -196,8 +195,21 @@ func ParseLogSelector(input string, validate bool) (LogSelectorExpr, error) {
 func ParseLabels(lbs string) (labels.Labels, error) {
 	ls, err := promql_parser.ParseMetric(lbs)
 	if err != nil {
-		return nil, err
+		return labels.EmptyLabels(), err
 	}
-	sort.Sort(ls)
+	ls = SortLabels(ls)
 	return ls, nil
+}
+
+// SortLabels sorts an instance of labels.Labels
+// Since labels.Labels is immutable, the sorting is not done in place. This
+// function works by iterating over the existing labels and using the internal
+// mechanism of labels.New(ls ...labels.Label) to rebuild
+// and return a new sorted instance.
+func SortLabels(ls labels.Labels) labels.Labels {
+	var currentLabels []labels.Label
+	ls.Range(func(l labels.Label) {
+		currentLabels = append(currentLabels, l)
+	})
+	return labels.New(currentLabels...)
 }

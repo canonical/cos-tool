@@ -7,7 +7,7 @@ import (
 	"time"
 	"unicode"
 
-	"github.com/dustin/go-humanize"
+	humanize "github.com/dustin/go-humanize"
 	"github.com/prometheus/prometheus/model/labels"
 
 	"github.com/canonical/cos-tool/pkg/logql/logqlmodel"
@@ -107,13 +107,15 @@ func (b *BinaryLabelFilter) RequiredLabelNames() []string {
 func (b *BinaryLabelFilter) String() string {
 	var sb strings.Builder
 	sb.WriteString("( ")
-	sb.WriteString(b.Left.String())
+	leftStr := fmt.Sprintf("%v", b.Left)
+	sb.WriteString(leftStr)
 	if b.and {
 		sb.WriteString(" , ")
 	} else {
 		sb.WriteString(" or ")
 	}
-	sb.WriteString(b.Right.String())
+	rightStr := fmt.Sprintf("%v", b.Right)
+	sb.WriteString(rightStr)
 	sb.WriteString(" )")
 	return sb.String()
 }
@@ -334,13 +336,13 @@ func NewStringLabelFilter(m *labels.Matcher) *StringLabelFilter {
 }
 
 func (s *StringLabelFilter) Process(line []byte, lbs *LabelsBuilder) ([]byte, bool) {
-	if s.Name == logqlmodel.ErrorLabel {
-		return line, s.Matches(lbs.GetErr())
+	if s.Matcher.Name == logqlmodel.ErrorLabel {
+		return line, s.Matcher.Matches(lbs.GetErr())
 	}
-	v, _ := lbs.Get(s.Name)
-	return line, s.Matches(v)
+	v, _ := lbs.Get(s.Matcher.Name)
+	return line, s.Matcher.Matches(v)
 }
 
 func (s *StringLabelFilter) RequiredLabelNames() []string {
-	return []string{s.Name}
+	return []string{s.Matcher.Name}
 }
