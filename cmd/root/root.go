@@ -11,6 +11,11 @@ import (
 	cli "github.com/urfave/cli/v2"
 )
 
+// Define a private, unique key type
+type contextKey string
+
+const implKey contextKey = "impl"
+
 var app = &cli.App{
 	Name:            "cos-tool",
 	Usage:           "Validates Prometheus and Loki expressions, adds Juju Topology to label matchers",
@@ -109,11 +114,11 @@ var app = &cli.App{
 		me := strings.ToLower(c.String("format"))
 		switch me {
 		case "promql":
-			c.Context = context.WithValue(c.Context, "impl", &tool.PromQL{})
+			c.Context = context.WithValue(c.Context, implKey, &tool.PromQL{})
 		case "logql":
-			c.Context = context.WithValue(c.Context, "impl", &tool.LogQL{})
+			c.Context = context.WithValue(c.Context, implKey, &tool.LogQL{})
 		default:
-			c.Context = context.WithValue(c.Context, "impl", &tool.PromQL{})
+			c.Context = context.WithValue(c.Context, implKey, &tool.PromQL{})
 		}
 
 		return nil

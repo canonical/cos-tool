@@ -1,7 +1,7 @@
 package tool_test
 
 import (
-	"io/ioutil"
+	"os"
 	"path/filepath"
 	"testing"
 
@@ -10,7 +10,7 @@ import (
 )
 
 func readFile(filepath string) []byte {
-	d, _ := ioutil.ReadFile(filepath)
+	d, _ := os.ReadFile(filepath)
 	return d
 }
 func TestParsePromAlertFileSuccess(t *testing.T) {

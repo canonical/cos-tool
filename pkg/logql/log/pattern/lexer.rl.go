@@ -51,10 +51,6 @@ var _pattern_eof_trans []byte = []byte{
 }
 
 const pattern_start int = 1
-const pattern_first_final int = 1
-const pattern_error int = -1
-
-const pattern_en_main int = 1
 
 //line pkg/logql/log/pattern/lexer.rl:14
 

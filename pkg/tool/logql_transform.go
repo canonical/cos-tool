@@ -50,9 +50,9 @@ func (p *LogQL) Transform(arg string, matchers *map[string]string) (string, erro
 func (p *LogQL) traverse(e interface{}) {
 	// Even though we cast back, the signature has to be interface{}
 	// or it cannot be satisfied
-	switch e.(type) {
+	switch e := e.(type) {
 	case *parser.MatchersExpr:
-		p.injectLabelMatcher(e.(*parser.MatchersExpr))
+		p.injectLabelMatcher(e)
 	default:
 		// Do nothing
 	}
