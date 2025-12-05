@@ -1083,12 +1083,12 @@ func mustNewBinOpExpr(op string, opts *BinOpOptions, lhs, rhs Expr) SampleExpr {
 func reduceBinOp(op string, left, right *LiteralExpr) *LiteralExpr {
 	merged := MergeBinOp(
 		op,
-		&promql.Sample{Point: promql.Point{V: left.Val}},
-		&promql.Sample{Point: promql.Point{V: right.Val}},
+		&promql.Sample{F: left.Val},
+		&promql.Sample{F: right.Val},
 		false,
 		false,
 	)
-	return &LiteralExpr{Val: merged.V}
+	return &LiteralExpr{Val: merged.F}
 }
 
 func MergeBinOp(op string, left, right *promql.Sample, filter, isVectorComparison bool) *promql.Sample {
@@ -1102,9 +1102,9 @@ func MergeBinOp(op string, left, right *promql.Sample, filter, isVectorCompariso
 			}
 			res := promql.Sample{
 				Metric: left.Metric,
-				Point:  left.Point,
+				F:      left.F,
 			}
-			res.Point.V += right.Point.V
+			res.F += right.F
 			return &res
 		}
 
@@ -1115,9 +1115,9 @@ func MergeBinOp(op string, left, right *promql.Sample, filter, isVectorCompariso
 			}
 			res := promql.Sample{
 				Metric: left.Metric,
-				Point:  left.Point,
+				F:      left.F,
 			}
-			res.Point.V -= right.Point.V
+			res.F -= right.F
 			return &res
 		}
 
@@ -1128,9 +1128,9 @@ func MergeBinOp(op string, left, right *promql.Sample, filter, isVectorCompariso
 			}
 			res := promql.Sample{
 				Metric: left.Metric,
-				Point:  left.Point,
+				F:      left.F,
 			}
-			res.Point.V *= right.Point.V
+			res.F *= right.F
 			return &res
 		}
 
@@ -1141,14 +1141,14 @@ func MergeBinOp(op string, left, right *promql.Sample, filter, isVectorCompariso
 			}
 			res := promql.Sample{
 				Metric: left.Metric,
-				Point:  left.Point,
+				F:      left.F,
 			}
 
 			// guard against divide by zero
-			if right.Point.V == 0 {
-				res.Point.V = math.NaN()
+			if right.F == 0 {
+				res.F = math.NaN()
 			} else {
-				res.Point.V /= right.Point.V
+				res.F /= right.F
 			}
 			return &res
 		}
@@ -1160,13 +1160,13 @@ func MergeBinOp(op string, left, right *promql.Sample, filter, isVectorCompariso
 			}
 			res := promql.Sample{
 				Metric: left.Metric,
-				Point:  left.Point,
+				F:      left.F,
 			}
 			// guard against divide by zero
-			if right.Point.V == 0 {
-				res.Point.V = math.NaN()
+			if right.F == 0 {
+				res.F = math.NaN()
 			} else {
-				res.Point.V = math.Mod(res.Point.V, right.Point.V)
+				res.F = math.Mod(res.F, right.F)
 			}
 			return &res
 		}
@@ -1179,9 +1179,9 @@ func MergeBinOp(op string, left, right *promql.Sample, filter, isVectorCompariso
 
 			res := promql.Sample{
 				Metric: left.Metric,
-				Point:  left.Point,
+				F:      left.F,
 			}
-			res.Point.V = math.Pow(left.Point.V, right.Point.V)
+			res.F = math.Pow(left.F, right.F)
 			return &res
 		}
 
@@ -1193,16 +1193,16 @@ func MergeBinOp(op string, left, right *promql.Sample, filter, isVectorCompariso
 
 			res := &promql.Sample{
 				Metric: left.Metric,
-				Point:  left.Point,
+				F:      left.F,
 			}
 
 			val := 0.
-			if left.Point.V == right.Point.V {
+			if left.F == right.F {
 				val = 1.
 			} else if filter {
 				return nil
 			}
-			res.Point.V = val
+			res.F = val
 			return res
 		}
 
@@ -1214,16 +1214,16 @@ func MergeBinOp(op string, left, right *promql.Sample, filter, isVectorCompariso
 
 			res := &promql.Sample{
 				Metric: left.Metric,
-				Point:  left.Point,
+				F:      left.F,
 			}
 
 			val := 0.
-			if left.Point.V != right.Point.V {
+			if left.F != right.F {
 				val = 1.
 			} else if filter {
 				return nil
 			}
-			res.Point.V = val
+			res.F = val
 			return res
 		}
 
@@ -1235,16 +1235,16 @@ func MergeBinOp(op string, left, right *promql.Sample, filter, isVectorCompariso
 
 			res := &promql.Sample{
 				Metric: left.Metric,
-				Point:  left.Point,
+				F:      left.F,
 			}
 
 			val := 0.
-			if left.Point.V > right.Point.V {
+			if left.F > right.F {
 				val = 1.
 			} else if filter {
 				return nil
 			}
-			res.Point.V = val
+			res.F = val
 			return res
 		}
 
@@ -1256,16 +1256,16 @@ func MergeBinOp(op string, left, right *promql.Sample, filter, isVectorCompariso
 
 			res := &promql.Sample{
 				Metric: left.Metric,
-				Point:  left.Point,
+				F:      left.F,
 			}
 
 			val := 0.
-			if left.Point.V >= right.Point.V {
+			if left.F >= right.F {
 				val = 1.
 			} else if filter {
 				return nil
 			}
-			res.Point.V = val
+			res.F = val
 			return res
 		}
 
@@ -1277,16 +1277,16 @@ func MergeBinOp(op string, left, right *promql.Sample, filter, isVectorCompariso
 
 			res := &promql.Sample{
 				Metric: left.Metric,
-				Point:  left.Point,
+				F:      left.F,
 			}
 
 			val := 0.
-			if left.Point.V < right.Point.V {
+			if left.F < right.F {
 				val = 1.
 			} else if filter {
 				return nil
 			}
-			res.Point.V = val
+			res.F = val
 			return res
 		}
 
@@ -1298,16 +1298,16 @@ func MergeBinOp(op string, left, right *promql.Sample, filter, isVectorCompariso
 
 			res := &promql.Sample{
 				Metric: left.Metric,
-				Point:  left.Point,
+				F:      left.F,
 			}
 
 			val := 0.
-			if left.Point.V <= right.Point.V {
+			if left.F <= right.F {
 				val = 1.
 			} else if filter {
 				return nil
 			}
-			res.Point.V = val
+			res.F = val
 			return res
 		}
 

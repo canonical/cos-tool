@@ -1,8 +1,6 @@
 package log
 
 import (
-	"sort"
-
 	"github.com/prometheus/prometheus/model/labels"
 
 	"github.com/canonical/cos-tool/pkg/logql/logqlmodel"
@@ -176,12 +174,9 @@ func (b *LabelsBuilder) Get(key string) (string, bool) {
 		}
 	}
 
-	for _, l := range b.base {
-		if l.Name == key {
-			return l.Value, true
-		}
-	}
-	return "", false
+	val := b.base.Get(key)
+	return val, val != ""
+
 }
 
 // Del deletes the label of the given name.
@@ -213,34 +208,35 @@ func (b *LabelsBuilder) Set(n, v string) *LabelsBuilder {
 // Labels returns the labels from the builder. If no modifications
 // were made, the original labels are returned.
 func (b *LabelsBuilder) labels() labels.Labels {
-	b.buf = b.unsortedLabels(b.buf)
-	sort.Sort(b.buf)
+	b.buf = b.sortedLabels(b.labelsToSlice(b.buf))
 	return b.buf
 }
 
-func (b *LabelsBuilder) unsortedLabels(buf labels.Labels) labels.Labels {
+func (b *LabelsBuilder) sortedLabels(buf []labels.Label) labels.Labels {
+
+	baseSlice := b.labelsToSlice(b.base)
 	if len(b.del) == 0 && len(b.add) == 0 {
 		if buf == nil {
-			buf = make(labels.Labels, 0, len(b.base)+1)
+			buf = make([]labels.Label, 0, len(baseSlice)+1)
 		} else {
 			buf = buf[:0]
 		}
-		buf = append(buf, b.base...)
+		buf = append(buf, baseSlice...)
 		if b.err != "" {
 			buf = append(buf, labels.Label{Name: logqlmodel.ErrorLabel, Value: b.err})
 		}
-		return buf
+		return labels.New(buf...)
 	}
 
 	// In the general case, labels are removed, modified or moved
 	// rather than added.
 	if buf == nil {
-		buf = make(labels.Labels, 0, len(b.base)+len(b.add)+1)
+		buf = make([]labels.Label, 0, len(baseSlice)+len(b.add)+1)
 	} else {
 		buf = buf[:0]
 	}
 Outer:
-	for _, l := range b.base {
+	for _, l := range baseSlice {
 		for _, n := range b.del {
 			if l.Name == n {
 				continue Outer
@@ -258,7 +254,7 @@ Outer:
 		buf = append(buf, labels.Label{Name: logqlmodel.ErrorLabel, Value: b.err})
 	}
 
-	return buf
+	return labels.New(buf...)
 }
 
 func (b *LabelsBuilder) Map() map[string]string {
@@ -268,13 +264,14 @@ func (b *LabelsBuilder) Map() map[string]string {
 		}
 		return b.baseMap
 	}
-	b.buf = b.unsortedLabels(b.buf)
+	b.buf = b.sortedLabels(b.labelsToSlice(b.buf))
 	// todo should we also cache maps since limited by the result ?
 	// Maps also don't create a copy of the labels.
-	res := make(map[string]string, len(b.buf))
-	for _, l := range b.buf {
+	res := make(map[string]string, b.buf.Len())
+	b.buf.Range(func(l labels.Label) {
 		res[l.Name] = l.Value
-	}
+	})
+
 	return res
 }
 
@@ -327,10 +324,11 @@ func (b *LabelsBuilder) GroupedLabels() LabelsResult {
 }
 
 func (b *LabelsBuilder) withResult() LabelsResult {
-	if b.buf == nil {
-		b.buf = make(labels.Labels, 0, len(b.groups))
+	currBufSlice := b.labelsToSlice(b.buf)
+	if currBufSlice == nil {
+		currBufSlice = make([]labels.Label, 0, len(b.groups))
 	} else {
-		b.buf = b.buf[:0]
+		currBufSlice = currBufSlice[:0]
 	}
 Outer:
 	for _, g := range b.groups {
@@ -341,32 +339,36 @@ Outer:
 		}
 		for _, la := range b.add {
 			if g == la.Name {
-				b.buf = append(b.buf, la)
+				currBufSlice = append(currBufSlice, la)
 				continue Outer
 			}
 		}
-		for _, l := range b.base {
+		for _, l := range b.labelsToSlice(b.base) {
 			if g == l.Name {
-				b.buf = append(b.buf, l)
+				currBufSlice = append(currBufSlice, l)
 				continue Outer
 			}
 		}
 	}
+	newBuff := labels.New(currBufSlice...)
+	b.buf = newBuff
 	return b.toResult(b.buf)
 }
 
 func (b *LabelsBuilder) withoutResult() LabelsResult {
-	if b.buf == nil {
-		size := len(b.base) + len(b.add) - len(b.del) - len(b.groups)
+	currBufSlice := b.labelsToSlice(b.buf)
+	currBaseSlice := b.labelsToSlice(b.base)
+	if currBufSlice == nil {
+		size := len(currBaseSlice) + len(b.add) - len(b.del) - len(b.groups)
 		if size < 0 {
 			size = 0
 		}
-		b.buf = make(labels.Labels, 0, size)
+		currBufSlice = make([]labels.Label, 0, size)
 	} else {
-		b.buf = b.buf[:0]
+		currBufSlice = currBufSlice[:0]
 	}
 Outer:
-	for _, l := range b.base {
+	for _, l := range currBaseSlice {
 		for _, n := range b.del {
 			if l.Name == n {
 				continue Outer
@@ -382,7 +384,7 @@ Outer:
 				continue Outer
 			}
 		}
-		b.buf = append(b.buf, l)
+		currBufSlice = append(currBufSlice, l)
 	}
 OuterAdd:
 	for _, la := range b.add {
@@ -391,9 +393,10 @@ OuterAdd:
 				continue OuterAdd
 			}
 		}
-		b.buf = append(b.buf, la)
+		currBufSlice = append(currBufSlice, la)
 	}
-	sort.Sort(b.buf)
+	newBuf := labels.New(currBufSlice...)
+	b.buf = newBuf
 	return b.toResult(b.buf)
 }
 
@@ -403,13 +406,70 @@ func (b *LabelsBuilder) toBaseGroup() LabelsResult {
 	}
 	var lbs labels.Labels
 	if b.without {
-		lbs = b.base.WithoutLabels(b.groups...)
+		lbs = b.withoutLabels(b.groups...)
 	} else {
-		lbs = b.base.WithLabels(b.groups...)
+		lbs = b.withLabels(b.groups...)
 	}
 	res := NewLabelsResult(lbs, lbs.Hash())
 	b.groupedResult = res
 	return res
+}
+
+func (b *LabelsBuilder) labelsToSlice(ls labels.Labels) []labels.Label {
+	// return nil if empty to keep the curr behavior
+	if ls.Len() == 0 {
+		return nil
+	}
+
+	var slice []labels.Label
+	slice = make([]labels.Label, 0, ls.Len())
+	ls.Range(func(l labels.Label) {
+		slice = append(slice, l)
+	})
+	return slice
+}
+
+// withoutLabels is an implementation of the logic previously provided
+// by the now-removed 'labels.Labels.WithoutLabels()' method.
+// cfr. https://github.com/prometheus/prometheus/blob/b11062bfccc9c8b2f7827aa2dc611b005025ad40/model/labels/labels.go
+func (b *LabelsBuilder) withoutLabels(names ...string) labels.Labels {
+	metricName := "__name__"
+	baseSlice := b.labelsToSlice(b.base)
+	ret := make([]labels.Label, 0, b.base.Len())
+
+	j := 0
+	for i := range baseSlice {
+		for j < len(names) && names[j] < baseSlice[i].Name {
+			j++
+		}
+		if baseSlice[i].Name == metricName || (j < len(names) && baseSlice[i].Name == names[j]) {
+			continue
+		}
+		ret = append(ret, baseSlice[i])
+	}
+	return labels.New(ret...)
+}
+
+// withoutLabels is an implementation of the logic previously provided
+// by the now-removed 'labels.Labels.WithLabels()' method.
+// cfr. https://github.com/prometheus/prometheus/blob/b11062bfccc9c8b2f7827aa2dc611b005025ad40/model/labels/labels.go
+func (b *LabelsBuilder) withLabels(names ...string) labels.Labels {
+	baseSlice := b.labelsToSlice(b.base)
+	ret := make([]labels.Label, 0, b.base.Len())
+
+	i, j := 0, 0
+	for i < b.base.Len() && j < len(names) {
+		if names[j] < baseSlice[i].Name {
+			j++
+		} else if baseSlice[i].Name < names[j] {
+			i++
+		} else {
+			ret = append(ret, baseSlice[i])
+			i++
+			j++
+		}
+	}
+	return labels.New(ret...)
 }
 
 type internedStringSet map[string]struct {

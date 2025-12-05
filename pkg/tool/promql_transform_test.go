@@ -1,8 +1,9 @@
 package tool_test
 
 import (
-	"github.com/canonical/cos-tool/pkg/tool"
 	"testing"
+
+	"github.com/canonical/cos-tool/pkg/tool"
 
 	"github.com/stretchr/testify/assert"
 )
@@ -38,7 +39,7 @@ func TestShouldApplyLabelMatcherToVectorSelector(t *testing.T) {
 		{
 			Input:    `sum by(consumergroup) (kafka_consumergroup_lag) > 50`,
 			Matchers: map[string]string{"firstname": "Franz"},
-			Expected: `sum by(consumergroup) (kafka_consumergroup_lag{firstname="Franz"}) > 50`,
+			Expected: `sum by (consumergroup) (kafka_consumergroup_lag{firstname="Franz"}) > 50`,
 		},
 		{
 			Input:    `up{cool="breeze",hot="sunrays"} == 0`,
