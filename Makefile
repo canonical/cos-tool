@@ -9,7 +9,7 @@ test:
 lint:
 	@if ! command -v golangci-lint >/dev/null 2>&1; then \
 		echo "Installing golangci-lint..."; \
-		go install github.com/golangci/golangci-lint/cmd/golangci-lint@v1.64.8; \
+		go install github.com/golangci/golangci-lint/cmd/golangci-lint@latest; \
 	fi
 	@echo "Running golangci-lint..."
 	@golangci-lint run --timeout=2m --max-same-issues=10 --max-issues-per-linter=20
