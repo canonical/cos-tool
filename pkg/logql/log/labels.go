@@ -175,7 +175,7 @@ func (b *LabelsBuilder) Get(key string) (string, bool) {
 	}
 
 	val := b.base.Get(key)
-	return val, val != ""
+	return val, b.base.Has(key)
 
 }
 
