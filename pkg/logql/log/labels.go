@@ -450,7 +450,7 @@ func (b *LabelsBuilder) withoutLabels(names ...string) labels.Labels {
 	return labels.New(ret...)
 }
 
-// withoutLabels is an implementation of the logic previously provided
+// withLabels is an implementation of the logic previously provided
 // by the now-removed 'labels.Labels.WithLabels()' method.
 // cfr. https://github.com/prometheus/prometheus/blob/b11062bfccc9c8b2f7827aa2dc611b005025ad40/model/labels/labels.go
 func (b *LabelsBuilder) withLabels(names ...string) labels.Labels {
