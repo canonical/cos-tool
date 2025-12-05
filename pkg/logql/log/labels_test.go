@@ -194,11 +194,11 @@ func TestLabelsBuilderSpecialCharacters(t *testing.T) {
 
 	// Test with special characters in keys and values
 	testCases := map[string]string{
-		"unicode-key":  "héllo-wörld",
-		"quotes":       `value with "quotes"`,
-		"spaces":      "value with spaces",
+		"unicode-key":   "héllo-wörld",
+		"quotes":        `value with "quotes"`,
+		"spaces":        "value with spaces",
 		"special-chars": "test@#$%^&*()",
-		"empty":       "",
+		"empty":         "",
 	}
 
 	for key, value := range testCases {
