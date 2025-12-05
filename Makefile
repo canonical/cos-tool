@@ -1,7 +1,7 @@
 # Add GOPATH/bin to PATH for this Makefile
 export PATH := $(shell go env GOPATH)/bin:$(PATH)
 
-.PHONY: test lint
+.PHONY: test lint vuln-check
 
 test:
 	go test ./... -coverprofile coverage.out
@@ -13,6 +13,14 @@ lint:
 	fi
 	@echo "Running golangci-lint..."
 	@golangci-lint run --timeout=2m --max-same-issues=10 --max-issues-per-linter=20
+
+vuln-check:
+	@if ! command -v govulncheck >/dev/null 2>&1; then \
+		echo "Installing govulncheck..."; \
+		go install golang.org/x/vuln/cmd/govulncheck@latest; \
+	fi
+	@echo "Running vulnerability check..."
+	@govulncheck ./...
 
 fmt:
 	go fmt ./...
@@ -26,6 +34,7 @@ help:
 	@echo "Available commands:"
 	@echo "  test             - Run tests with verbose output"
 	@echo "  lint             - Run linter (auto-installs if needed)"
+	@echo "  vuln-check       - Check for security vulnerabilities"
 	@echo "  fmt              - Format code"
 	@echo "  deps             - Download and tidy dependencies"
 	@echo "  help             - Show this help message"
