@@ -230,7 +230,7 @@ func newRegexpFilter(re string, match bool) (Filterer, error) {
 }
 
 func (r regexpFilter) Filter(line []byte) bool {
-	return r.Match(line)
+	return r.Regexp.Match(line)
 }
 
 func (r regexpFilter) ToStage() Stage {

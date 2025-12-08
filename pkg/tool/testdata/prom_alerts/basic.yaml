@@ -4,5 +4,6 @@ groups:
       - alert: CPUOverUse
         expr: process_cpu_seconds_total > 0.12
         for: 0m
+        keep_firing_for: 60m
         labels:
           severity: Low

@@ -7,7 +7,7 @@ import (
 	"text/template"
 	"text/template/parse"
 
-	"github.com/Masterminds/sprig/v3"
+	sprig "github.com/Masterminds/sprig/v3"
 	"github.com/grafana/regexp"
 
 	"github.com/canonical/cos-tool/pkg/logql/logqlmodel"
@@ -139,7 +139,7 @@ func (lf *LineFormatter) Process(line []byte, lbs *LabelsBuilder) ([]byte, bool)
 }
 
 func (lf *LineFormatter) RequiredLabelNames() []string {
-	return uniqueString(listNodeFields([]parse.Node{lf.Root}))
+	return uniqueString(listNodeFields([]parse.Node{lf.Template.Root}))
 }
 
 func listNodeFields(nodes []parse.Node) []string {
@@ -308,47 +308,4 @@ func (lf *LabelsFormatter) RequiredLabelNames() []string {
 		names = append(names, listNodeFields([]parse.Node{fm.tmpl.Root})...)
 	}
 	return uniqueString(names)
-}
-
-func trunc(c int, s string) string {
-	runes := []rune(s)
-	l := len(runes)
-	if c < 0 && l+c > 0 {
-		return string(runes[l+c:])
-	}
-	if c >= 0 && l > c {
-		return string(runes[:c])
-	}
-	return s
-}
-
-// substring creates a substring of the given string.
-//
-// If start is < 0, this calls string[:end].
-//
-// If start is >= 0 and end < 0 or end bigger than s length, this calls string[start:]
-//
-// Otherwise, this calls string[start, end].
-func substring(start, end int, s string) string {
-	runes := []rune(s)
-	l := len(runes)
-	if end > l {
-		end = l
-	}
-	if start > l {
-		start = l
-	}
-	if start < 0 {
-		if end < 0 {
-			return ""
-		}
-		return string(runes[:end])
-	}
-	if end < 0 {
-		return string(runes[start:])
-	}
-	if start > end {
-		return ""
-	}
-	return string(runes[start:end])
 }

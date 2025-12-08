@@ -26,7 +26,7 @@ func (e expr) validate() error {
 		}
 		if _, ok := n.(capture); ok {
 			if _, ok := e[i+1].(capture); ok {
-				return fmt.Errorf("found consecutive capture '%s': %w", n.String()+e[i+1].String(), ErrInvalidExpr)
+				return fmt.Errorf("found consecutive capture '%s': %w", fmt.Sprintf("%v", n)+fmt.Sprintf("%v", e[i+1]), ErrInvalidExpr)
 			}
 		}
 	}
