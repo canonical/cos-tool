@@ -25,6 +25,7 @@ vuln-check:
 build:
 	@echo "Building cos-tool..."
 	@go build -o bin/cos-tool ./cmd/root
+	@chmod +x bin/cos-tool
 
 build-all:
 	@echo "Building cos-tool for all architectures..."
