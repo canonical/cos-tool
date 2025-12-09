@@ -47,7 +47,6 @@ clean:
 fmt:
 	go fmt ./...
 
-
 deps:
 	go mod tidy
 	go mod download
