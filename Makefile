@@ -24,19 +24,19 @@ vuln-check:
 
 build:
 	@echo "Building cos-tool..."
-	@go build -o bin/cos-tool ./cmd/root
+	@go build -o bin/cos-tool
 	@chmod +x bin/cos-tool
 
 build-all:
 	@echo "Building cos-tool for all architectures..."
 	@echo "Building for linux/amd64..."
-	GOOS=linux GOARCH=amd64 go build -o bin/cos-tool-linux-amd64 ./cmd/root
+	GOOS=linux GOARCH=amd64 go build -o bin/cos-tool-linux-amd64
 	@echo "Building for linux/arm64..."
-	GOOS=linux GOARCH=arm64 go build -o bin/cos-tool-linux-arm64 ./cmd/root
+	GOOS=linux GOARCH=arm64 go build -o bin/cos-tool-linux-arm64
 	@echo "Building for linux/ppc64le..."
-	GOOS=linux GOARCH=ppc64le go build -o bin/cos-tool-linux-ppc64le ./cmd/root
+	GOOS=linux GOARCH=ppc64le go build -o bin/cos-tool-linux-ppc64le
 	@echo "Building for linux/s390x..."
-	GOOS=linux GOARCH=s390x go build -o bin/cos-tool-linux-s390x ./cmd/root
+	GOOS=linux GOARCH=s390x go build -o bin/cos-tool-linux-s390x
 	@echo "All builds completed in bin/ directory"
 
 clean:
