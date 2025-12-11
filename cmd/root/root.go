@@ -51,7 +51,7 @@ var app = &cli.App{
 					log.Fatal(err)
 				}
 
-				transformer := c.Context.Value("impl").(tool.Checker)
+				transformer := c.Context.Value(implKey).(tool.Checker)
 				output, err := transformer.Transform(args.First(), &inj)
 				if err != nil {
 					return err
@@ -71,7 +71,7 @@ var app = &cli.App{
 					log.Fatal("Expected at least one rule file to validate.")
 				}
 
-				validator := c.Context.Value("impl").(tool.Checker)
+				validator := c.Context.Value(implKey).(tool.Checker)
 
 				for _, f := range args.Slice() {
 					data, err := os.ReadFile(f)
@@ -97,7 +97,7 @@ var app = &cli.App{
 					log.Fatal("Expected at least one rule file to validate.")
 				}
 
-				validator := c.Context.Value("impl").(tool.Checker)
+				validator := c.Context.Value(implKey).(tool.Checker)
 
 				for _, f := range args.Slice() {
 					err := validator.ValidateConfig(f)
