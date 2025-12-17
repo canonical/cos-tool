@@ -97,8 +97,8 @@ func replaceGrafanaVariables(query string) (string, map[int]string) {
 	replacements := make(map[int]string)
 	counter := 99990000 // Use a distinctive number to identify our placeholders
 
-	// Match Grafana variables: ${var}, ${var:option}, $__var
-	varPattern := regexp.MustCompile(`\$\{[^}]+\}|\$__\w+`)
+	// Match Grafana variables: ${var}, ${var:option}, $var (including $__var)
+	varPattern := regexp.MustCompile(`\$\{[^}]+\}|\$\w+`)
 
 	result := varPattern.ReplaceAllStringFunc(query, func(match string) string {
 		placeholder := counter

@@ -1,6 +1,7 @@
 package tool_test
 
 import (
+	"regexp"
 	"strings"
 	"testing"
 
@@ -279,6 +280,21 @@ func TestGrafanaVariableReplacement(t *testing.T) {
 			expected: 3,
 		},
 		{
+			name:     "Custom user variable",
+			input:    `{app="$app", region="$region"}`,
+			expected: 2,
+		},
+		{
+			name:     "Mixed global and custom variables",
+			input:    `{app="$app"} | timestamp >= ${__from} | flavor=~"$flavor"`,
+			expected: 3,
+		},
+		{
+			name:     "Custom variable in regex matcher",
+			input:    `{job=~"$job_pattern"}`,
+			expected: 1,
+		},
+		{
 			name:     "No variables",
 			input:    `{job="test"} | rate [5m]`,
 			expected: 0,
@@ -295,8 +311,11 @@ func TestGrafanaVariableReplacement(t *testing.T) {
 			// If variables were found, verify they were replaced with numbers
 			if tc.expected > 0 {
 				assert.NotEqual(t, tc.input, processed, "Query should be modified")
-				assert.NotContains(t, processed, "${", "Processed query should not contain ${")
-				assert.NotContains(t, processed, "$__", "Processed query should not contain $__")
+
+				// Verify no Grafana variables remain (using same pattern as replacement)
+				varPattern := regexp.MustCompile(`\$\{[^}]+\}|\$\w+`)
+				matches := varPattern.FindAllString(processed, -1)
+				assert.Empty(t, matches, "Processed query should not contain any Grafana variables")
 
 				// Verify we can restore the original
 				restored := tool.RestoreGrafanaVariables(processed, occurrences)
