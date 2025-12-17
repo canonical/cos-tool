@@ -334,6 +334,7 @@ func TestGrafanaVariableEdgeCases(t *testing.T) {
 		matchers map[string]string
 		wantErr  bool
 	}{
+		// Basic variable placement tests
 		{
 			name:     "Variable in filter expression",
 			input:    `{job="test"} | timestamp >= ${__from}`,
@@ -347,15 +348,17 @@ func TestGrafanaVariableEdgeCases(t *testing.T) {
 			wantErr:  false,
 		},
 		{
-			name:     "Complex query with multiple variables",
-			input:    `rate({job="test"} | value >= ${__from} and value <= ${__to} and duration > $__interval_ms [5m])`,
-			matchers: map[string]string{"namespace": "prod"},
+			name:     "Variable adjacent to special chars (no space)",
+			input:    `{job="test"} | json | value>${__from}`,
+			matchers: map[string]string{"app": "test"},
 			wantErr:  false,
 		},
+
+		// Multiple variables tests
 		{
-			name:     "Variable in label value (custom variable)",
-			input:    `{job=~"$job_var"} | timestamp >= ${__from}`,
-			matchers: map[string]string{"cluster": "prod"},
+			name:     "Complex query with multiple different variables",
+			input:    `rate({job="test"} | value >= ${__from} and value <= ${__to} and duration > $__interval_ms [5m])`,
+			matchers: map[string]string{"namespace": "prod"},
 			wantErr:  false,
 		},
 		{
@@ -365,10 +368,72 @@ func TestGrafanaVariableEdgeCases(t *testing.T) {
 			wantErr:  false,
 		},
 		{
-			name:     "Variable with format option",
+			name:     "Same variable in different formats",
+			input:    `{job="test"} | timestamp >= $__from and time <= ${__from}`,
+			matchers: map[string]string{"cluster": "main"},
+			wantErr:  false,
+		},
+
+		// Custom user variables
+		{
+			name:     "Custom variable in label value",
+			input:    `{job=~"$job_var"} | timestamp >= ${__from}`,
+			matchers: map[string]string{"cluster": "prod"},
+			wantErr:  false,
+		},
+		{
+			name:     "Custom variables with underscores and numbers",
+			input:    `{app="$app_name_v2", version="$version_123"}`,
+			matchers: map[string]string{"env": "staging"},
+			wantErr:  false,
+		},
+
+		// Format specifiers
+		{
+			name:     "Variable with simple format option",
 			input:    `{job="test"} | timestamp >= ${__from:date}`,
 			matchers: map[string]string{"zone": "east"},
 			wantErr:  false,
+		},
+		{
+			name:     "Variable with complex format specifiers",
+			input:    `{job="test"} | timestamp >= ${__from:date:iso} and time <= ${__to:date:YYYY-MM-DD}`,
+			matchers: map[string]string{"service": "api"},
+			wantErr:  false,
+		},
+
+		// Complex nested scenarios
+		{
+			name:     "Nested braces with variables in json expressions",
+			input:    `{job="test"} | json data="${response}" | data_extracted="${data.field.$var_name}"`,
+			matchers: map[string]string{"app": "parser"},
+			wantErr:  false,
+		},
+
+		// Structural positions (these should fail - variables cannot be in structural positions)
+		{
+			name:     "Variable in unwrap (structural position)",
+			input:    `{job="test"} | unwrap $metric_name`,
+			matchers: map[string]string{"env": "prod"},
+			wantErr:  true,
+		},
+		{
+			name:     "Variable in aggregation by clause (structural position)",
+			input:    `sum by($group_by) (rate({job="test"}[5m]))`,
+			matchers: map[string]string{"namespace": "kube"},
+			wantErr:  true,
+		},
+		{
+			name:     "Variable in duration range (structural position)",
+			input:    `{job="test"} [${__range_s}s]`,
+			matchers: map[string]string{"app": "metrics"},
+			wantErr:  true,
+		},
+		{
+			name:     "Variable as function name (structural position)",
+			input:    `$metric_function({job="test"}[5m])`,
+			matchers: map[string]string{"type": "aggregation"},
+			wantErr:  true,
 		},
 	}
 
@@ -400,3 +465,81 @@ func TestGrafanaVariableEdgeCases(t *testing.T) {
 		})
 	}
 }
+
+func TestGrafanaVariablesInQuotedStrings(t *testing.T) {
+	testCases := []struct {
+		name     string
+		input    string
+		matchers map[string]string
+		wantErr  bool
+	}{
+		{
+			name:     "Variable in line_format string",
+			input:    `{job="test"} | line_format "User: $username logged in"`,
+			matchers: map[string]string{"app": "myapp"},
+			wantErr:  false,
+		},
+		{
+			name:     "Multiple variables in line_format",
+			input:    `{job="test"} | line_format "Time: ${timestamp}, User: $user, Action: $action"`,
+			matchers: map[string]string{"env": "prod"},
+			wantErr:  false,
+		},
+		{
+			name:     "Variable in label_format",
+			input:    `{job="test"} | label_format new_label="prefix-$old_label-suffix"`,
+			matchers: map[string]string{"cluster": "k8s"},
+			wantErr:  false,
+		},
+		{
+			name:     "Mixed: variables in quotes and outside",
+			input:    `{app="$app_name"} | line_format "Value: $value" | timestamp >= ${__from}`,
+			matchers: map[string]string{"namespace": "default"},
+			wantErr:  false,
+		},
+		{
+			name:     "Variable in regex pattern within quotes",
+			input:    `{job="test"} |~ "error.*$error_type.*failed"`,
+			matchers: map[string]string{"severity": "high"},
+			wantErr:  false,
+		},
+		{
+			name:     "Backtick strings with variables",
+			input:    "{job=\"test\"} | line_format `Status: $status at ${time}`",
+			matchers: map[string]string{"region": "us-east"},
+			wantErr:  false,
+		},
+		{
+			name:     "Escaped quotes with variables",
+			input:    `{job="test"} | line_format "Message: \"$msg\""`,
+			matchers: map[string]string{"app": "web"},
+			wantErr:  false,
+		},
+	}
+
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			p := &tool.LogQL{}
+			result, err := p.Transform(tc.input, &tc.matchers)
+
+			if tc.wantErr {
+				assert.Error(t, err)
+			} else {
+				assert.NoError(t, err)
+				assert.NotEmpty(t, result)
+
+				// Verify the result is valid (doesn't mean parsing succeeded)
+				// The key test is that variables are preserved in the output
+				originalVars := regexp.MustCompile(`\$\{[^}]+\}|\$\w+`).FindAllString(tc.input, -1)
+				resultVars := regexp.MustCompile(`\$\{[^}]+\}|\$\w+`).FindAllString(result, -1)
+
+				// All original variables should be in the result
+				assert.Equal(t, len(originalVars), len(resultVars),
+					"Number of variables should be preserved. Original: %v, Result: %v",
+					originalVars, resultVars)
+			}
+		})
+	}
+}
+
+
