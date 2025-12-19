@@ -541,5 +541,3 @@ func TestGrafanaVariablesInQuotedStrings(t *testing.T) {
 		})
 	}
 }
-
-
