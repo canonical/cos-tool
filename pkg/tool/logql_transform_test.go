@@ -43,7 +43,8 @@ func TestShouldApplyLabelMatcherToLogQLSelector(t *testing.T) {
 func TestLogQLTransformErrorHandling(t *testing.T) {
 	p := &tool.LogQL{}
 
-	// Test cases for malformed LogQL expressions that should fail gracefully
+	// Test cases for malformed LogQL expressions
+	// Verifies that invalid syntax returns errors without panicking
 	testCases := []struct {
 		name        string
 		input       string
@@ -135,7 +136,6 @@ func TestLogQLTransformErrorHandling(t *testing.T) {
 func TestLogQLTransformWithEmptyMatchers(t *testing.T) {
 	p := &tool.LogQL{}
 
-	// Test with empty matchers map
 	emptyMatchers := map[string]string{}
 	result, err := p.Transform(`{job="test"}`, &emptyMatchers)
 	assert.NoError(t, err, "Should not error with empty matchers")
@@ -145,7 +145,6 @@ func TestLogQLTransformWithEmptyMatchers(t *testing.T) {
 func TestLogQLTransformDoesNotPanicWithValidInputs(t *testing.T) {
 	p := &tool.LogQL{}
 
-	// Test various valid inputs to ensure no panics
 	testCases := []struct {
 		name     string
 		input    string
@@ -201,6 +200,134 @@ func TestLogQLTransformSpecialCharactersInMatchers(t *testing.T) {
 	}
 }
 
+func TestLogQLTransformWithGrouping(t *testing.T) {
+	p := &tool.LogQL{}
+
+	testCases := []struct {
+		name     string
+		input    string
+		matchers map[string]string
+		expected string
+	}{
+		{
+			name:     "Sum aggregation with by clause - single grouping label",
+			input:    `sum by(job) (rate({app="foo"}[$__rate_interval]))`,
+			matchers: map[string]string{"env": "prod"},
+			expected: `sum by(job)(rate({app="foo", env="prod"}[$__rate_interval]))`,
+		},
+		{
+			name:     "Sum aggregation with by clause - multiple grouping labels",
+			input:    `sum by(job, instance, region) (rate({app=${app}}[5m]))`,
+			matchers: map[string]string{"env": "prod", "cluster": "main"},
+			expected: `sum by(job,instance,region)(rate({app=${app}, cluster="main", env="prod"}[5m]))`,
+		},
+		{
+			name:     "Count aggregation with without clause - single excluded label",
+			input:    `count without(level) (rate({app="bar"}[$_rate_interval]))`,
+			matchers: map[string]string{"model": "test"},
+			expected: `count without(level)(rate({app="bar", model="test"}[$_rate_interval]))`,
+		},
+		{
+			name:     "Count aggregation with without clause - multiple excluded labels",
+			input:    `count without(level, host) (rate({app="bar"}[1m]))`,
+			matchers: map[string]string{"model": "test", "region": "us"},
+			expected: `count without(level,host)(rate({app="bar", model="test", region="us"}[1m]))`,
+		},
+		{
+			name:     "Avg aggregation with by clause and line filters",
+			input:    `avg by(namespace) (rate({job="app"} |= "error" [10m]))`,
+			matchers: map[string]string{"cluster": "prod"},
+			expected: `avg by(namespace)(rate({job="app", cluster="prod"} |= "error"[10m]))`,
+		},
+		{
+			name:     "Max aggregation with without clause and multiple line filters",
+			input:    `max without(pod) (rate({service="api"} |~ ".*ERROR.*" != "timeout" [5m]))`,
+			matchers: map[string]string{"env": "staging"},
+			expected: `max without(pod)(rate({service="api", env="staging"} |~ ".*ERROR.*" != "timeout"[5m]))`,
+		},
+	}
+
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			result, err := p.Transform(tc.input, &tc.matchers)
+			assert.NoError(t, err, "Should not error for valid LogQL with grouping")
+			assert.Equal(t, tc.expected, result, "Transformed query should match expected output")
+		})
+	}
+}
+
+// Tests transformation with variables in label values
+// Common pattern in Grafana where label values are parameterized with dashboard variables
+func TestLogQLTransformWithVariablesInLabelValues(t *testing.T) {
+	p := &tool.LogQL{}
+
+	testCases := []struct {
+		name     string
+		input    string
+		matchers map[string]string
+		expected string
+	}{
+		{
+			name:     "single variable in label value",
+			input:    `{app="$application"}`,
+			matchers: map[string]string{"env": "prod"},
+			expected: `{app="$application", env="prod"}`,
+		},
+		{
+			name:     "multiple variables in different labels",
+			input:    `{app="$app", namespace="$namespace"}`,
+			matchers: map[string]string{"cluster": "main"},
+			expected: `{app="$app", namespace="$namespace", cluster="main"}`,
+		},
+		{
+			name:     "variable with curly braces in label value",
+			input:    `{job="${job_name}", instance="${instance}"}`,
+			matchers: map[string]string{"region": "us-east"},
+			expected: `{job="${job_name}", instance="${instance}", region="us-east"}`,
+		},
+		{
+			name:     "mixed: variable and fixed values",
+			input:    `{app="$app", env="production"}`,
+			matchers: map[string]string{"team": "platform"},
+			expected: `{app="$app", env="production", team="platform"}`,
+		},
+		{
+			name:     "variable in label value with rate and by clause",
+			input:    `sum by(job) (rate({service="$service"}[5m]))`,
+			matchers: map[string]string{"env": "staging"},
+			expected: `sum by(job)(rate({service="$service", env="staging"}[5m]))`,
+		},
+		{
+			name:     "variable with regex matcher",
+			input:    `{app=~"$app_regex"}`,
+			matchers: map[string]string{"namespace": "default"},
+			expected: `{app=~"$app_regex", namespace="default"}`,
+		},
+		{
+			name:     "variable in label value with log filters",
+			input:    `{app="$app"} |= "error" | json`,
+			matchers: map[string]string{"cluster": "prod"},
+			expected: `{app="$app", cluster="prod"} |= "error" | json`,
+		},
+		{
+			name:     "multiple variables with grouping and filters",
+			input:    `count by(level) (rate({job="$job", namespace="$ns"} |~ "ERROR" [5m]))`,
+			matchers: map[string]string{"env": "prod", "region": "eu"},
+			expected: `count by(level)(rate({job="$job", namespace="$ns", env="prod", region="eu"} |~ "ERROR"[5m]))`,
+		},
+	}
+
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			result, err := p.Transform(tc.input, &tc.matchers)
+			assert.NoError(t, err, "Should not error for LogQL with variables in label values")
+			assert.Equal(t, tc.expected, result, "Transformed query should preserve variables in label values")
+		})
+	}
+}
+
+// Tests transformation with Grafana built-in variables like ${__from}, ${__to}, $__interval_ms, $__range_ms
+// These are time-range and interval variables commonly used in Grafana dashboards
 func TestLogQLTransformWithGrafanaVariables(t *testing.T) {
 	cases := []TestCase{
 		{
@@ -242,52 +369,53 @@ func TestLogQLTransformWithGrafanaVariables(t *testing.T) {
 	}
 }
 
+// Tests that Grafana variables ($var, ${var}, ${var:format}) are correctly preserved
+// through the transformation process, while label matchers are still injected
 func TestGrafanaVariableReplacement(t *testing.T) {
-	// Test the internal helper functions
 	testCases := []struct {
 		name     string
 		input    string
 		expected int // number of variables expected
 	}{
 		{
-			name:     "Single variable ${__from}",
-			input:    `timestamp >= ${__from}`,
+			name:     "Single variable in label value",
+			input:    `{job="$job"}`,
 			expected: 1,
 		},
 		{
-			name:     "Multiple variables",
-			input:    `timestamp >= ${__from} and timestamp <= ${__to}`,
-			expected: 2,
-		},
-		{
-			name:     "Short form variable",
-			input:    `duration > $__interval_ms`,
-			expected: 1,
-		},
-		{
-			name:     "Variable with format option",
-			input:    `time >= ${__from:date}`,
-			expected: 1,
-		},
-		{
-			name:     "Multiple same variables",
-			input:    `value >= ${__from} or value2 >= ${__from}`,
-			expected: 2,
-		},
-		{
-			name:     "Three different variables",
-			input:    `timestamp >= ${__from} and timestamp <= ${__to} and interval = ${__interval}`,
-			expected: 3,
-		},
-		{
-			name:     "Custom user variable",
+			name:     "Multiple variables in labels",
 			input:    `{app="$app", region="$region"}`,
 			expected: 2,
 		},
 		{
-			name:     "Mixed global and custom variables",
-			input:    `{app="$app"} | timestamp >= ${__from} | flavor=~"$flavor"`,
+			name:     "Variable with braces format",
+			input:    `{job="${job}"}`,
+			expected: 1,
+		},
+		{
+			name:     "Variable with format option",
+			input:    `{job="${job:csv}"}`,
+			expected: 1,
+		},
+		{
+			name:     "Multiple same variables",
+			input:    `{app="$app", backup_app="$app"}`,
+			expected: 2,
+		},
+		{
+			name:     "Three different variables",
+			input:    `{app="$app", region="$region", env="$env"}`,
 			expected: 3,
+		},
+		{
+			name:     "Variable in filter",
+			input:    `{job="test"} |= "$search"`,
+			expected: 1,
+		},
+		{
+			name:     "Variable in duration",
+			input:    `rate({job="test"}[$__interval])`,
+			expected: 1,
 		},
 		{
 			name:     "Custom variable in regex matcher",
@@ -296,32 +424,43 @@ func TestGrafanaVariableReplacement(t *testing.T) {
 		},
 		{
 			name:     "No variables",
-			input:    `{job="test"} | rate [5m]`,
+			input:    `{job="test"}`,
 			expected: 0,
 		},
 	}
 
 	for _, tc := range testCases {
 		t.Run(tc.name, func(t *testing.T) {
-			processed, occurrences := tool.ReplaceGrafanaVariables(tc.input)
+			// Use Transform API (public API) instead of internal functions
+			logql := &tool.LogQL{}
+			matchers := make(map[string]string)
+			matchers["injected"] = "value"
 
-			// Check we found the right number of variables
-			assert.Equal(t, tc.expected, len(occurrences), "Expected %d variable occurrences", tc.expected)
+			result, err := logql.Transform(tc.input, &matchers)
 
-			// If variables were found, verify they were replaced with numbers
+			// Verify transformation succeeds
+			assert.NoError(t, err, "Transform should not error")
+
+			// If variables exist, verify they are preserved in output
 			if tc.expected > 0 {
-				assert.NotEqual(t, tc.input, processed, "Query should be modified")
-
-				// Verify no Grafana variables remain (using same pattern as replacement)
+				// Variables should be preserved in the final result
 				varPattern := regexp.MustCompile(`\$\{[^}]+\}|\$\w+`)
-				matches := varPattern.FindAllString(processed, -1)
-				assert.Empty(t, matches, "Processed query should not contain any Grafana variables")
+				inputVars := varPattern.FindAllString(tc.input, -1)
+				outputVars := varPattern.FindAllString(result, -1)
 
-				// Verify we can restore the original
-				restored := tool.RestoreGrafanaVariables(processed, occurrences)
-				assert.Equal(t, tc.input, restored, "Restored query should match original")
+				// All original variables should be present in output
+				assert.Equal(t, len(inputVars), len(outputVars),
+					"All variables should be preserved in output")
+
+				// Label matchers should be injected
+				assert.Contains(t, result, "injected=\"value\"",
+					"Label matcher should be injected")
 			} else {
-				assert.Equal(t, tc.input, processed, "Query without variables should not be modified")
+				// No variables, so query might be unchanged except for label injection
+				if strings.Contains(tc.input, "{") {
+					assert.Contains(t, result, "injected=\"value\"",
+						"Label matcher should be injected even without variables")
+				}
 			}
 		})
 	}
@@ -410,7 +549,7 @@ func TestGrafanaVariableEdgeCases(t *testing.T) {
 			wantErr:  false,
 		},
 
-		// Structural positions (these should fail - variables cannot be in structural positions)
+		// Variables in structural positions (not supported - these cases should fail during parsing)
 		{
 			name:     "Variable in unwrap (structural position)",
 			input:    `{job="test"} | unwrap $metric_name`,
@@ -528,8 +667,7 @@ func TestGrafanaVariablesInQuotedStrings(t *testing.T) {
 				assert.NoError(t, err)
 				assert.NotEmpty(t, result)
 
-				// Verify the result is valid (doesn't mean parsing succeeded)
-				// The key test is that variables are preserved in the output
+				// Verify that all variables are preserved in the output
 				originalVars := regexp.MustCompile(`\$\{[^}]+\}|\$\w+`).FindAllString(tc.input, -1)
 				resultVars := regexp.MustCompile(`\$\{[^}]+\}|\$\w+`).FindAllString(result, -1)
 

@@ -10,6 +10,7 @@ import (
 	"slices"
 	"sort"
 	"strings"
+	"time"
 )
 
 func (p *LogQL) ValidateRules(filename string, data []byte) (*rulefmt.RuleGroups, error) {
@@ -91,51 +92,231 @@ func (p *LogQL) injectLabelMatcher(e *parser.MatchersExpr) {
 	e.AppendMatchers(appendMatchers)
 }
 
-// replaceGrafanaVariables replaces Grafana template variables with valid numeric placeholders
-// and returns a map for later restoration.
-func replaceGrafanaVariables(query string) (string, map[int]string) {
-	replacements := make(map[int]string)
-	counter := 99990000 // Use a distinctive number to identify our placeholders
+// Precompiled regex patterns for LogQL variable detection and replacement
+var (
+	// Pattern matching Grafana template variables: $var, ${var}, ${var:option}
+	logQLVarPattern = `\$(?:\{[^}]+\}|\w+)`
 
-	// Match Grafana variables: ${var}, ${var:option}, $var (including $__var)
-	varPattern := regexp.MustCompile(`\$\{[^}]+\}|\$\w+`)
+	// Matches variables in range duration brackets: [$var], [$__interval]
+	logQLRangeDurationPattern = regexp.MustCompile(`\[(` + logQLVarPattern + `)\]`)
 
-	result := varPattern.ReplaceAllStringFunc(query, func(match string) string {
-		placeholder := counter
-		replacements[placeholder] = match
+	// Label value pattern: captures variables in label matcher values
+	// Matches variables in label matcher values (quoted and unquoted):
+	// label="$var", label=~$var
+	logQLLabelValuePattern = regexp.MustCompile(`(\w+)\s*(=~?|!=?~?)\s*(?:"(` + logQLVarPattern + `)"|` + `(` + logQLVarPattern + `)(?:\s|,|}|\]))`)
+
+	// Matches any remaining Grafana variable not caught by specific patterns
+	logQLGeneralVariablePattern = regexp.MustCompile(logQLVarPattern)
+)
+
+// replaceGrafanaVariables replaces Grafana variables with valid placeholders for LogQL parsing
+// Returns modified query and map of placeholder→original variable for restoration
+func replaceGrafanaVariables(query string) (string, map[string]string) {
+	replacements := make(map[string]string)
+	variableToPlaceholder := make(map[string]string) // Ensures same variable gets same placeholder
+	quotedPlaceholders := make(map[string]bool)      // Tracks original quote state for restoration
+	counter := 99990000
+
+	// Returns existing placeholder or creates new one for variable
+	getPlaceholder := func(variable string, format string, needsQuotes bool) string {
+		if placeholder, exists := variableToPlaceholder[variable]; exists {
+			return placeholder
+		}
+
+		placeholder := fmt.Sprintf(format, counter)
+		variableToPlaceholder[variable] = placeholder
+		replacements[placeholder] = variable
+		if needsQuotes {
+			quotedPlaceholders[placeholder] = true
+		}
 		counter++
-		return fmt.Sprintf("%d", placeholder)
+		return placeholder
+	}
+
+	result := query
+
+	// Replace in order of specificity: durations, label values, then general variables
+	result = replaceLogQLDurationVariables(result, func(variable string, format string) string {
+		return getPlaceholder(variable, format, false)
 	})
+
+	result = replaceLogQLLabelValueVariables(result, func(variable string, format string, needsQuotes bool) string {
+		return getPlaceholder(variable, format, needsQuotes)
+	})
+
+	result = replaceLogQLOtherVariables(result, func(variable string, format string) string {
+		return getPlaceholder(variable, format, false)
+	})
+
+	// Store quote metadata using special key prefix for restoration phase
+	for placeholder, needsQuotes := range quotedPlaceholders {
+		if needsQuotes {
+			replacements["__quoted__"+placeholder] = "true"
+		}
+	}
 
 	return result, replacements
 }
 
-// restoreGrafanaVariables restores the original Grafana variables from placeholders.
-// It processes placeholders in descending order to avoid partial replacements.
-func restoreGrafanaVariables(query string, replacements map[int]string) string {
-	// Get placeholder keys and sort in descending order
-	placeholders := make([]int, 0, len(replacements))
-	for placeholder := range replacements {
-		placeholders = append(placeholders, placeholder)
-	}
-	slices.Sort(placeholders)
-	slices.Reverse(placeholders)
+// replaceLogQLDurationVariables replaces variables in range brackets with duration placeholders
+// Adds "s" suffix for LogQL parser compatibility: [$__interval] → [99990000s]
+func replaceLogQLDurationVariables(query string, getPlaceholder func(string, string) string) string {
+	return logQLRangeDurationPattern.ReplaceAllStringFunc(query, func(match string) string {
+		variable := match[1 : len(match)-1]            // Extract variable without brackets
+		placeholder := getPlaceholder(variable, "%ds") // Add "s" suffix for LogQL
+		return "[" + placeholder + "]"
+	})
+}
+
+// replaceLogQLLabelValueVariables replaces variables in label values with quoted placeholders
+// Handles both quoted and unquoted forms: {job="$job"} → {job="99990002"}
+func replaceLogQLLabelValueVariables(query string, getPlaceholder func(string, string, bool) string) string {
+	return logQLLabelValuePattern.ReplaceAllStringFunc(query, func(match string) string {
+		parts := logQLLabelValuePattern.FindStringSubmatch(match)
+		if len(parts) < 4 {
+			return match
+		}
+		labelName := parts[1]
+		operator := parts[2]
+		wasQuoted := parts[3] != ""
+		variable := parts[3]
+		if variable == "" && len(parts) > 4 {
+			variable = parts[4]
+		}
+
+		placeholder := getPlaceholder(variable, "%d", wasQuoted)
+		suffix := ""
+		if len(match) > 0 && (match[len(match)-1] == ' ' || match[len(match)-1] == ',' || match[len(match)-1] == '}' || match[len(match)-1] == ')') {
+			suffix = string(match[len(match)-1])
+		}
+
+		return fmt.Sprintf(`%s%s"%s"%s`, labelName, operator, placeholder, suffix)
+	})
+}
+
+// replaceLogQLOtherVariables replaces remaining variables in filters and function arguments
+// Example: |= "$pattern" → |= "99990005"
+func replaceLogQLOtherVariables(query string, getPlaceholder func(string, string) string) string {
+	return logQLGeneralVariablePattern.ReplaceAllStringFunc(query, func(variable string) string {
+		return getPlaceholder(variable, "%d")
+	})
+}
+
+// restoreGrafanaVariables restores original Grafana variables from placeholders
+// Handles LogQL's duration normalization (99990000s → 1157407h46m40s)
+func restoreGrafanaVariables(query string, replacements map[string]string) string {
+	durationMap := buildLogQLDurationMap(replacements)
+	placeholders := sortLogQLPlaceholdersByLength(replacements)
 
 	result := query
-	for _, placeholder := range placeholders {
-		original := replacements[placeholder]
-		result = strings.ReplaceAll(result, fmt.Sprintf("%d", placeholder), original)
-	}
+	result = restoreLogQLDurationVariables(result, durationMap)
+	result = restoreLogQLOtherPlaceholders(result, placeholders, replacements)
 
 	return result
 }
 
-// ReplaceGrafanaVariables is exposed for testing purposes
-func ReplaceGrafanaVariables(query string) (string, map[int]string) {
-	return replaceGrafanaVariables(query)
+// buildLogQLDurationMap maps LogQL-normalized durations back to original variables
+// LogQL normalizes durations: 99990000s → 1157407h46m40s
+func buildLogQLDurationMap(replacements map[string]string) map[string]string {
+	durationToVariable := make(map[string]string)
+
+	for placeholder, original := range replacements {
+		if strings.HasSuffix(placeholder, "s") {
+			numStr := placeholder[:len(placeholder)-1]
+			var seconds int
+			if _, err := fmt.Sscanf(numStr, "%d", &seconds); err == nil {
+				duration := time.Duration(seconds) * time.Second
+				normalized := formatLogQLDuration(duration)
+				durationToVariable[normalized] = original
+			}
+		}
+	}
+
+	return durationToVariable
 }
 
-// RestoreGrafanaVariables is exposed for testing purposes
-func RestoreGrafanaVariables(query string, replacements map[int]string) string {
-	return restoreGrafanaVariables(query, replacements)
+// formatLogQLDuration formats duration in LogQL's normalized format (e.g., 1157407h46m40s)
+func formatLogQLDuration(d time.Duration) string {
+	const day = 24 * time.Hour
+
+	days := int(d / day)
+	d -= time.Duration(days) * day
+
+	hours := int(d.Hours())
+	d -= time.Duration(hours) * time.Hour
+
+	minutes := int(d.Minutes())
+	d -= time.Duration(minutes) * time.Minute
+
+	seconds := int(d.Seconds())
+
+	parts := []string{}
+	if days > 0 {
+		parts = append(parts, fmt.Sprintf("%dd", days))
+	}
+	if hours > 0 {
+		parts = append(parts, fmt.Sprintf("%dh", hours))
+	}
+	if minutes > 0 {
+		parts = append(parts, fmt.Sprintf("%dm", minutes))
+	}
+	if seconds > 0 || len(parts) == 0 {
+		parts = append(parts, fmt.Sprintf("%ds", seconds))
+	}
+
+	return strings.Join(parts, "")
+}
+
+// sortLogQLPlaceholdersByLength sorts placeholders by length descending
+// Prevents partial replacements (e.g., "999" within "99990000")
+func sortLogQLPlaceholdersByLength(replacements map[string]string) []string {
+	placeholders := make([]string, 0, len(replacements))
+	for placeholder := range replacements {
+		if !strings.HasPrefix(placeholder, "__quoted__") {
+			placeholders = append(placeholders, placeholder)
+		}
+	}
+
+	slices.SortFunc(placeholders, func(a, b string) int {
+		if len(a) != len(b) {
+			return len(b) - len(a)
+		}
+		if a > b {
+			return -1
+		}
+		return 1
+	})
+
+	return placeholders
+}
+
+// restoreLogQLDurationVariables replaces normalized durations with original variables
+func restoreLogQLDurationVariables(query string, durationMap map[string]string) string {
+	result := query
+	for normalized, original := range durationMap {
+		result = strings.ReplaceAll(result, normalized, original)
+	}
+	return result
+}
+
+// restoreLogQLOtherPlaceholders replaces remaining placeholders with original variables
+// Restores original quote state (adds quotes if originally quoted, removes if not)
+func restoreLogQLOtherPlaceholders(query string, placeholders []string, replacements map[string]string) string {
+	result := query
+	for _, placeholder := range placeholders {
+		original := replacements[placeholder]
+		_, wasQuoted := replacements["__quoted__"+placeholder]
+
+		if wasQuoted {
+			result = strings.ReplaceAll(result, `"`+placeholder+`"`, `"`+original+`"`)
+		} else {
+			quotedPlaceholder := `"` + placeholder + `"`
+			if strings.Contains(result, quotedPlaceholder) {
+				result = strings.ReplaceAll(result, quotedPlaceholder, original)
+			} else {
+				result = strings.ReplaceAll(result, placeholder, original)
+			}
+		}
+	}
+	return result
 }
