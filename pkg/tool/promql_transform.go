@@ -111,7 +111,7 @@ var (
 
 	// Function name pattern: variable followed by opening parenthesis
 	// Matches: $func(...) or ${func}(...)
-	// Must be preceded by start, comma, or opening paren to avoid matching metric$var
+	// Requires variable to be preceded by start, comma, or opening paren
 	functionNamePattern = regexp.MustCompile(`(?:^|[,\(])\s*` + varPattern + `\s*\(`)
 
 	// Grouping label pattern: by($var) or without($var)
@@ -141,7 +141,7 @@ var (
 	generalVariablePattern = regexp.MustCompile(varPattern)
 )
 
-// checkUnsupportedVariables detects variables in unsupported structural positions
+// checkUnsupportedVariables detects variables in function names and grouping clauses
 func checkUnsupportedVariables(expr string) error {
 	// Check for function name variables: $func(...)
 	if functionNamePattern.MatchString(expr) {
@@ -156,7 +156,7 @@ func checkUnsupportedVariables(expr string) error {
 }
 
 // replaceGrafanaVariablesPromQL replaces Grafana variables with parseable placeholders
-// Handles four types: full metric names, metric name components, durations, and label values
+// Processes variables in order: full metric names, metric name components, durations, and label values
 func replaceGrafanaVariablesPromQL(query string) (string, map[string]string) {
 	replacements := make(map[string]string)
 	variableToPlaceholder := make(map[string]string) // Track same variable → same placeholder
@@ -187,7 +187,7 @@ func replaceGrafanaVariablesPromQL(query string) (string, map[string]string) {
 
 // replaceFullMetricNameVariables replaces entire metric names that are variables
 // Examples: $metric{...}, ${metric_name}{...}
-// This must run before replaceMetricNameVariables to avoid conflicts
+// This must run before replaceVariablesInMetricNameComponents to avoid conflicts
 func replaceFullMetricNameVariables(query string, getPlaceholder func(string, string) string) string {
 	result := query
 
