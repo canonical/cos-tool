@@ -118,10 +118,9 @@ var (
 	// Matches variables inside by() or without() clauses
 	groupingLabelPattern = regexp.MustCompile(`\b(?:by|without)\s*\([^)]*` + varPattern)
 
-	// Metric name start pattern: detects variables as entire metric names
-	// Matches: $var{...} at start, or after comma/paren
-	// Pattern (?:^|[,\(]) prevents matching metric$suffix{...}
-	metricNameStartPattern = regexp.MustCompile(`(?:^|[,\(])\s*` + varPattern + `\{`)
+	// Full metric name pattern: detects when entire metric name is a variable
+	// Matches: $var{...} or ${var}{...} where variable is the complete metric name
+	fullMetricNamePattern = regexp.MustCompile(`(?:^|[,\(])\s*(` + varPattern + `)\s*\{`)
 
 	// Replacement patterns for variable substitution
 	// These are used during the replace phase to swap variables with placeholders
@@ -146,31 +145,25 @@ var (
 func checkUnsupportedVariables(expr string) error {
 	// Check for function name variables: $func(...)
 	if functionNamePattern.MatchString(expr) {
-		return fmt.Errorf("variables in function name positions are not supported: cannot safely validate and restore")
+		return fmt.Errorf("variables in function name positions are not supported: cannot safely replace for validation")
 	}
 
 	// Check for grouping label variables: by($label)
 	if groupingLabelPattern.MatchString(expr) {
-		return fmt.Errorf("variables in grouping (by/without) positions are not supported: cannot safely validate and restore")
+		return fmt.Errorf("variables in grouping (by/without) positions are not supported: cannot safely replace for validation")
 	}
-
-	// Check for variables at the start of metric names: $var{...}
-	if metricNameStartPattern.MatchString(expr) {
-		return fmt.Errorf("variables at the start of metric names are not supported: parser requires valid identifier start")
-	}
-
 	return nil
 }
 
 // replaceGrafanaVariablesPromQL replaces Grafana variables with parseable placeholders
-// Handles three types: metric names, durations, and label values
+// Handles four types: full metric names, metric name components, durations, and label values
 func replaceGrafanaVariablesPromQL(query string) (string, map[string]string) {
 	replacements := make(map[string]string)
 	variableToPlaceholder := make(map[string]string) // Track same variable → same placeholder
 	counter := 99990000
 
 	// Helper closure to get or create placeholder for a variable
-	// This eliminates duplication across the three replacement steps
+	// Ensures same variable always gets same placeholder across all positions
 	getPlaceholder := func(variable string, format string) string {
 		if placeholder, exists := variableToPlaceholder[variable]; exists {
 			return placeholder
@@ -184,11 +177,46 @@ func replaceGrafanaVariablesPromQL(query string) (string, map[string]string) {
 	}
 
 	result := query
+	result = replaceFullMetricNameVariables(result, getPlaceholder)
 	result = replaceMetricNameVariables(result, getPlaceholder)
 	result = replaceDurationVariables(result, getPlaceholder)
 	result = replaceValueVariables(result, getPlaceholder)
 
 	return result, replacements
+}
+
+// replaceFullMetricNameVariables replaces entire metric names that are variables
+// Examples: $metric{...}, ${metric_name}{...}
+// This must run before replaceMetricNameVariables to avoid conflicts
+func replaceFullMetricNameVariables(query string, getPlaceholder func(string, string) string) string {
+	result := query
+
+	for {
+		matches := fullMetricNamePattern.FindStringSubmatchIndex(result)
+		if matches == nil {
+			break
+		}
+
+		// Capture groups: [0,1] = full match, [2,3] = variable
+		if len(matches) < 4 {
+			break
+		}
+
+		matchStart, matchEnd := matches[0], matches[1]
+		varStart, varEnd := matches[2], matches[3]
+		variable := result[varStart:varEnd]
+
+		// Get placeholder (uses __v%d__ format for metric names)
+		placeholder := getPlaceholder(variable, "__v%d__")
+
+		// Replace: keep any prefix (like comma/paren), replace variable, keep {
+		prefix := result[matchStart:varStart]
+		replacement := prefix + placeholder + "{"
+
+		result = result[:matchStart] + replacement + result[matchEnd:]
+	}
+
+	return result
 }
 
 // replaceMetricNameVariables replaces variables in metric name components

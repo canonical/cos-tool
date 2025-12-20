@@ -95,6 +95,18 @@ func TestPromQLTransformWithVariables(t *testing.T) {
 			expected: `otelcol_process${suffix1}_uptime${suffix2}{env="prod",job="test"}`,
 		},
 		{
+			name:     "Metric name variable",
+			input:    `${metric_name}{job="test"}`,
+			matchers: map[string]string{"env": "prod"},
+			expected: `${metric_name}{env="prod",job="test"}`,
+		},
+		{
+			name:     "Metric name variable",
+			input:    `$metric_name{job="test"}`,
+			matchers: map[string]string{"env": "prod"},
+			expected: `$metric_name{env="prod",job="test"}`,
+		},
+		{
 			name:     "Complex real-world query",
 			input:    `sum(rate(otelcol_receiver_accepted${suffix_total}{receiver=~"$receiver",job="$job"}[$__rate_interval])) by (receiver)`,
 			matchers: map[string]string{"cluster": "prod"},
@@ -115,11 +127,11 @@ func TestPromQLTransformWithVariables(t *testing.T) {
 			errorMsg:    "grouping (by/without) positions are not supported",
 		},
 		{
-			name:        "Unsupported: variable at start of metric name",
+			name:        "Unsupported: variable as prefix in metric name",
 			input:       `${prefix}_metric{job="test"}`,
 			matchers:    map[string]string{"env": "prod"},
 			expectError: true,
-			errorMsg:    "", // Can be either our check or parser error
+			errorMsg:    "", // Parser will reject this as invalid syntax
 		},
 	}
 
