@@ -178,9 +178,9 @@ func replaceGrafanaVariablesPromQL(query string) (string, map[string]string) {
 
 	result := query
 	result = replaceFullMetricNameVariables(result, getPlaceholder)
-	result = replaceMetricNameVariables(result, getPlaceholder)
-	result = replaceDurationVariables(result, getPlaceholder)
-	result = replaceValueVariables(result, getPlaceholder)
+	result = replaceVariablesInMetricNameComponents(result, getPlaceholder)
+	result = replaceVariablesInDurations(result, getPlaceholder)
+	result = replaceVariablesInValues(result, getPlaceholder)
 
 	return result, replacements
 }
@@ -219,9 +219,9 @@ func replaceFullMetricNameVariables(query string, getPlaceholder func(string, st
 	return result
 }
 
-// replaceMetricNameVariables replaces variables in metric name components
+// replaceVariablesInMetricNameComponents replaces variables in metric name components
 // Examples: metric${suffix}{...}, otelcol${v1}_process${v2}{...}
-func replaceMetricNameVariables(query string, getPlaceholder func(string, string) string) string {
+func replaceVariablesInMetricNameComponents(query string, getPlaceholder func(string, string) string) string {
 	result := query
 
 	for {
@@ -241,6 +241,12 @@ func replaceMetricNameVariables(query string, getPlaceholder func(string, string
 		variable := parts[2] // "${suffix}" or "$suffix"
 		suffix := parts[3]   // optional text after variable (e.g., "_total")
 
+		// Verify this is actually a metric name by checking what comes after
+		// Must be followed by { (captured in pattern) to be valid metric syntax
+		if matchEnd >= len(result) || result[matchEnd-1] != '{' {
+			break // Invalid metric syntax, stop processing
+		}
+
 		// Get placeholder (uses __vN__ format for metric names)
 		placeholder := getPlaceholder(variable, "__v%d__")
 
@@ -252,9 +258,9 @@ func replaceMetricNameVariables(query string, getPlaceholder func(string, string
 	return result
 }
 
-// replaceDurationVariables replaces variables in range duration brackets
+// replaceVariablesInDurations replaces variables in range duration brackets
 // Examples: [$__rate_interval], [$bucket_size]
-func replaceDurationVariables(query string, getPlaceholder func(string, string) string) string {
+func replaceVariablesInDurations(query string, getPlaceholder func(string, string) string) string {
 	return rangeDurationReplacePattern.ReplaceAllStringFunc(query, func(match string) string {
 		variable := match[1 : len(match)-1]           // Extract variable without brackets
 		placeholder := getPlaceholder(variable, "%d") // Numeric placeholder
@@ -262,9 +268,9 @@ func replaceDurationVariables(query string, getPlaceholder func(string, string) 
 	})
 }
 
-// replaceValueVariables replaces variables in label values and function arguments
+// replaceVariablesInValues replaces variables in label values and function arguments
 // Examples: {job="$job"}, topk($limit, metric)
-func replaceValueVariables(query string, getPlaceholder func(string, string) string) string {
+func replaceVariablesInValues(query string, getPlaceholder func(string, string) string) string {
 	return generalVariablePattern.ReplaceAllStringFunc(query, func(variable string) string {
 		return getPlaceholder(variable, "%d") // Numeric placeholder
 	})
