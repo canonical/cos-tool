@@ -83,18 +83,6 @@ func TestPromQLTransformWithVariables(t *testing.T) {
 			expected: `rate(up{env="prod",job="test"}[$__rate_interval])`,
 		},
 		{
-			name:     "Metric name suffix variable",
-			input:    `otelcol_receiver${suffix_total}{job="test"}`,
-			matchers: map[string]string{"env": "prod"},
-			expected: `otelcol_receiver${suffix_total}{env="prod",job="test"}`,
-		},
-		{
-			name:     "Multiple metric suffix variables",
-			input:    `otelcol_process${suffix1}_uptime${suffix2}{job="test"}`,
-			matchers: map[string]string{"env": "prod"},
-			expected: `otelcol_process${suffix1}_uptime${suffix2}{env="prod",job="test"}`,
-		},
-		{
 			name:     "Metric name variable",
 			input:    `${metric_name}{job="test"}`,
 			matchers: map[string]string{"env": "prod"},
@@ -105,6 +93,30 @@ func TestPromQLTransformWithVariables(t *testing.T) {
 			input:    `$metric_name{job="test"}`,
 			matchers: map[string]string{"env": "prod"},
 			expected: `$metric_name{env="prod",job="test"}`,
+		},
+		{
+			name:     "Metric name suffix variable: ${suffix_total}",
+			input:    `otelcol_receiver_${suffix_total}{job="test"}`,
+			matchers: map[string]string{"env": "prod"},
+			expected: `otelcol_receiver_${suffix_total}{env="prod",job="test"}`,
+		},
+		{
+			name:     "Metric name suffix variable: $suffix_total",
+			input:    `otelcol_receiver_$suffix_total{job="test"}`,
+			matchers: map[string]string{"env": "prod"},
+			expected: `otelcol_receiver_$suffix_total{env="prod",job="test"}`,
+		},
+		{
+			name:     "Multiple metric suffix variables: ${suffix1} and ${suffix2}",
+			input:    `otelcol_process_${suffix1}_uptime_${suffix2}{job="test"}`,
+			matchers: map[string]string{"env": "prod"},
+			expected: `otelcol_process_${suffix1}_uptime_${suffix2}{env="prod",job="test"}`,
+		},
+		{
+			name:     "Multiple metric suffix variables: $suffix1 and $suffix2",
+			input:    `otelcol_process_$suffix1_uptime_$suffix2{job="test"}`,
+			matchers: map[string]string{"env": "prod"},
+			expected: `otelcol_process_$suffix1_uptime_$suffix2{env="prod",job="test"}`,
 		},
 		{
 			name:     "Complex real-world query",
@@ -218,11 +230,11 @@ func TestPromQLThreeVariableTypes(t *testing.T) {
 			expected:    `rate(up{cluster="prod",job="test"}[$__rate_interval])`,
 		},
 		{
-			name:        "Type 3: Variable in label value only",
+			name:        "Type 3: Variable in labels value only",
 			description: "Label value variable should be preserved",
-			input:       `up{job="$job"}`,
+			input:       `up{instance="${instance}", job="$job"}`,
 			matchers:    map[string]string{"cluster": "prod"},
-			expected:    `up{cluster="prod",job="$job"}`,
+			expected:    `up{cluster="prod",instance="${instance}",job="$job"}`,
 		},
 		{
 			name:        "Types 1+2: Metric name + Duration",
