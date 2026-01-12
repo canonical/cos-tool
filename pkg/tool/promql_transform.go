@@ -160,6 +160,11 @@ func checkUnsupportedVariables(expr string) error {
 func replaceGrafanaVariablesPromQL(query string) (string, map[string]string) {
 	replacements := make(map[string]string)
 	variableToPlaceholder := make(map[string]string) // Track same variable → same placeholder
+	// counter generates unique numeric placeholders starting at 99990000
+	// Placeholders are needed because Grafana variables ($var, ${var}) are not valid PromQL syntax
+	// and would cause parsing errors. We replace them with valid placeholders, parse/transform the query,
+	// then restore the original variables. This large counter value avoids collisions with real metric values.
+	// Examples: $var → 99990000, ${job} → 99990001, $__rate_interval → 99990002
 	counter := 99990000
 
 	// Helper closure to get or create placeholder for a variable

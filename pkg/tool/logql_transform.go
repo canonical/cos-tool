@@ -115,6 +115,11 @@ func replaceGrafanaVariables(query string) (string, map[string]string) {
 	replacements := make(map[string]string)
 	variableToPlaceholder := make(map[string]string) // Ensures same variable gets same placeholder
 	quotedPlaceholders := make(map[string]bool)      // Tracks original quote state for restoration
+	// counter generates unique numeric placeholders starting at 99990000
+	// Placeholders are needed because Grafana variables ($var, ${var}) are not valid LogQL syntax
+	// and would cause parsing errors. We replace them with valid placeholders, parse/transform the query,
+	// then restore the original variables. This large counter value avoids collisions with real label values.
+	// Examples: $var → 99990000, ${job} → 99990001, $__interval → 99990002s
 	counter := 99990000
 
 	// Returns existing placeholder or creates new one for variable
