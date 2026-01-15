@@ -122,8 +122,8 @@ func replaceGrafanaVariables(query string) (string, map[string]string) {
 	// Examples: $var → 99990000, ${job} → 99990001, $__interval → 99990002s
 	counter := 99990000
 
-	// Returns existing placeholder or creates new one for variable
-	getPlaceholder := func(variable string, format string, needsQuotes bool) string {
+	// Returns existing placeholder or creates new one for variable (without quotes)
+	getPlaceholder := func(variable string, format string) string {
 		if placeholder, exists := variableToPlaceholder[variable]; exists {
 			return placeholder
 		}
@@ -131,9 +131,20 @@ func replaceGrafanaVariables(query string) (string, map[string]string) {
 		placeholder := fmt.Sprintf(format, counter)
 		variableToPlaceholder[variable] = placeholder
 		replacements[placeholder] = variable
-		if needsQuotes {
-			quotedPlaceholders[placeholder] = true
+		counter++
+		return placeholder
+	}
+
+	// Returns existing placeholder or creates new one for variable (with quotes metadata)
+	getPlaceholderQuoted := func(variable string, format string) string {
+		if placeholder, exists := variableToPlaceholder[variable]; exists {
+			return placeholder
 		}
+
+		placeholder := fmt.Sprintf(format, counter)
+		variableToPlaceholder[variable] = placeholder
+		replacements[placeholder] = variable
+		quotedPlaceholders[placeholder] = true
 		counter++
 		return placeholder
 	}
@@ -141,17 +152,11 @@ func replaceGrafanaVariables(query string) (string, map[string]string) {
 	result := query
 
 	// Replace in order of specificity: durations, label values, then general variables
-	result = replaceLogQLVariablesInDurations(result, func(variable string, format string) string {
-		return getPlaceholder(variable, format, false)
-	})
+	result = replaceLogQLVariablesInDurations(result, getPlaceholder)
 
-	result = replaceLogQLVariablesInLabelValues(result, func(variable string, format string, needsQuotes bool) string {
-		return getPlaceholder(variable, format, needsQuotes)
-	})
+	result = replaceLogQLVariablesInLabelValues(result, getPlaceholder, getPlaceholderQuoted)
 
-	result = replaceLogQLVariablesInOtherContexts(result, func(variable string, format string) string {
-		return getPlaceholder(variable, format, false)
-	})
+	result = replaceLogQLVariablesInOtherContexts(result, getPlaceholder)
 
 	// Store quote metadata using special key prefix for restoration phase
 	for placeholder, needsQuotes := range quotedPlaceholders {
@@ -175,7 +180,7 @@ func replaceLogQLVariablesInDurations(query string, getPlaceholder func(string, 
 
 // replaceLogQLVariablesInLabelValues replaces variables in label values with quoted placeholders
 // Handles both quoted and unquoted forms: {job="$job"} → {job="99990002"}
-func replaceLogQLVariablesInLabelValues(query string, getPlaceholder func(string, string, bool) string) string {
+func replaceLogQLVariablesInLabelValues(query string, getPlaceholder func(string, string) string, getPlaceholderQuoted func(string, string) string) string {
 	return logQLLabelValuePattern.ReplaceAllStringFunc(query, func(match string) string {
 		parts := logQLLabelValuePattern.FindStringSubmatch(match)
 		if len(parts) < 4 {
@@ -189,7 +194,12 @@ func replaceLogQLVariablesInLabelValues(query string, getPlaceholder func(string
 			variable = parts[4]
 		}
 
-		placeholder := getPlaceholder(variable, "%d", wasQuoted)
+		placeholder := ""
+		if wasQuoted {
+			placeholder = getPlaceholderQuoted(variable, "%d")
+		} else {
+			placeholder = getPlaceholder(variable, "%d")
+		}
 		suffix := ""
 		if len(match) > 0 && (match[len(match)-1] == ' ' || match[len(match)-1] == ',' || match[len(match)-1] == '}' || match[len(match)-1] == ')') {
 			suffix = string(match[len(match)-1])
