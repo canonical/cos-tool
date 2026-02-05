@@ -6,7 +6,28 @@ on:
     - cron: "0 0 * * 1"  # Runs at midnight UTC every Monday
 
 jobs:
-    tics:
-        name: TiCs
-        uses: canonical/observability/.github/workflows/charm-tiobe-scan.yaml@main
-        secrets: inherit
+  scan:
+    name: Scan and upload
+    runs-on: [self-hosted, linux, amd64, tiobe, jammy]
+    timeout-minutes: 60
+    steps:
+      - name: Checkout the project
+        uses: actions/checkout@v4
+        with:
+          repository: canonical/${{ github.event.repository.name }}
+      - name: Setup Go 1.25.4
+        uses: actions/setup-go@v5
+        with:
+          go-version: 1.25.4
+      - name: Build binary
+        run: |
+          go build -o cos-tool ./cmd/root/
+
+      - name: Run TICS analysis with github-action
+        uses: tiobe/tics-github-action@v3
+        with:
+          mode: qserver
+          project: cos-tool
+          viewerUrl: https://canonical.tiobe.com/tiobeweb/TICS/api/cfg?name=GoProjects
+          ticsAuthToken: ${{ secrets.TICSAUTHTOKEN }}
+          installTics: true
