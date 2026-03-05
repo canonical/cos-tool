@@ -151,7 +151,23 @@ func replaceGrafanaVariables(query string) (string, map[string]string) {
 
 	result := query
 
-	// Replace in order of specificity: durations, label values, then general variables
+	// Replace in order of specificity: grouping, durations, label values, then general variables
+	// Grouping uses its own variable tracking to avoid format conflicts when the same
+	// variable appears in both grouping and label value positions
+	groupingVarToPlaceholder := make(map[string]string)
+	getGroupingPlaceholder := func(variable string, format string) string {
+		if placeholder, exists := groupingVarToPlaceholder[variable]; exists {
+			return placeholder
+		}
+
+		placeholder := fmt.Sprintf(format, counter)
+		groupingVarToPlaceholder[variable] = placeholder
+		replacements[placeholder] = variable
+		counter++
+		return placeholder
+	}
+	result = replaceVariablesInGrouping(result, logQLGeneralVariablePattern, getGroupingPlaceholder)
+
 	result = replaceLogQLVariablesInDurations(result, getPlaceholder)
 
 	result = replaceLogQLVariablesInLabelValues(result, getPlaceholder, getPlaceholderQuoted)

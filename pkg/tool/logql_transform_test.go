@@ -133,6 +133,28 @@ func TestLogQLTransformErrorHandling(t *testing.T) {
 	}
 }
 
+func TestLogQLTransformDoesNotDuplicateExistingLabel(t *testing.T) {
+	p := &tool.LogQL{}
+	// When the label being injected already exists in the stream selector, it must not be duplicated.
+	matchers := map[string]string{"env": "prod"}
+	result, err := p.Transform(`rate({job="test", env="existing"}[5m])`, &matchers)
+	assert.NoError(t, err)
+	assert.Equal(t, `rate({job="test", env="existing"}[5m])`, result)
+	assert.NotContains(t, result, `env="prod"`, "label already in selector must not be overwritten")
+}
+
+func TestLogQLGroupingVariableReusedAcrossClauses(t *testing.T) {
+	p := &tool.LogQL{}
+	// Same grouping variable in two separate by() clauses — hits the placeholder cache path.
+	matchers := map[string]string{"cluster": "prod"}
+	input := `sum by ($grouping) (rate({app="svc1"}[5m])) / sum by ($grouping) (rate({app="svc2"}[5m]))`
+	result, err := p.Transform(input, &matchers)
+	assert.NoError(t, err)
+	assert.Contains(t, result, `$grouping`, "grouping variable must be preserved in both clauses")
+	assert.Equal(t, 2, strings.Count(result, "$grouping"), "grouping variable must appear twice")
+	assert.Contains(t, result, `cluster="prod"`)
+}
+
 func TestLogQLTransformWithEmptyMatchers(t *testing.T) {
 	p := &tool.LogQL{}
 
@@ -557,10 +579,10 @@ func TestGrafanaVariableEdgeCases(t *testing.T) {
 			wantErr:  true,
 		},
 		{
-			name:     "Variable in aggregation by clause (structural position)",
+			name:     "Variable in aggregation by clause",
 			input:    `sum by($group_by) (rate({job="test"}[5m]))`,
 			matchers: map[string]string{"namespace": "kube"},
-			wantErr:  true,
+			wantErr:  false,
 		},
 		{
 			name:     "Variable in duration range (structural position)",
@@ -675,6 +697,107 @@ func TestGrafanaVariablesInQuotedStrings(t *testing.T) {
 				assert.Equal(t, len(originalVars), len(resultVars),
 					"Number of variables should be preserved. Original: %v, Result: %v",
 					originalVars, resultVars)
+			}
+		})
+	}
+}
+
+// TestLogQLTransformWithGroupingVariables tests variables in by/without clauses.
+// Variables in grouping positions should be preserved through the LogQL transform pipeline.
+func TestLogQLTransformWithGroupingVariables(t *testing.T) {
+	p := &tool.LogQL{}
+
+	tests := []struct {
+		name     string
+		input    string
+		matchers map[string]string
+		expected string
+	}{
+		{
+			name:     "by with single variable",
+			input:    `sum by ($grouping) (rate({job="test"}[5m]))`,
+			matchers: map[string]string{"env": "prod"},
+			expected: `sum by($grouping)(rate({job="test", env="prod"}[5m]))`,
+		},
+		{
+			name:     "without with single variable",
+			input:    `sum without ($exclude) (rate({job="test"}[5m]))`,
+			matchers: map[string]string{"env": "prod"},
+			expected: `sum without($exclude)(rate({job="test", env="prod"}[5m]))`,
+		},
+		{
+			name:     "by with ${var} syntax",
+			input:    `sum by (${grouping}) (rate({job="test"}[5m]))`,
+			matchers: map[string]string{"env": "prod"},
+			expected: `sum by(${grouping})(rate({job="test", env="prod"}[5m]))`,
+		},
+		{
+			name:     "by with variable and fixed labels",
+			input:    `sum by ($var, job) (rate({app="test"}[5m]))`,
+			matchers: map[string]string{"env": "prod"},
+			expected: `sum by($var,job)(rate({app="test", env="prod"}[5m]))`,
+		},
+		{
+			name:     "by with multiple variables",
+			input:    `sum by ($var1, $var2) (rate({job="test"}[5m]))`,
+			matchers: map[string]string{"env": "prod"},
+			expected: `sum by($var1,$var2)(rate({job="test", env="prod"}[5m]))`,
+		},
+		{
+			name:     "by variable combined with duration variable",
+			input:    `sum by ($grouping) (rate({job="test"}[$__rate_interval]))`,
+			matchers: map[string]string{"env": "prod"},
+			expected: `sum by($grouping)(rate({job="test", env="prod"}[$__rate_interval]))`,
+		},
+		{
+			name:     "by variable combined with label value variable",
+			input:    `sum by ($grouping) (rate({job="$job"}[5m]))`,
+			matchers: map[string]string{"env": "prod"},
+			expected: `sum by($grouping)(rate({job="$job", env="prod"}[5m]))`,
+		},
+		{
+			name:     "by variable combined with all other variable types",
+			input:    `sum by ($grouping) (rate({job="$job"}[$__rate_interval]))`,
+			matchers: map[string]string{"cluster": "prod"},
+			expected: `sum by($grouping)(rate({job="$job", cluster="prod"}[$__rate_interval]))`,
+		},
+		{
+			name:     "same variable in grouping and label value",
+			input:    `sum by ($job) (rate({job="$job"}[5m]))`,
+			matchers: map[string]string{"env": "prod"},
+			expected: `sum by($job)(rate({job="$job", env="prod"}[5m]))`,
+		},
+		{
+			name:     "by variable with line filters",
+			input:    `sum by ($grouping) (rate({job="test"} |= "error" [5m]))`,
+			matchers: map[string]string{"env": "prod"},
+			expected: `sum by($grouping)(rate({job="test", env="prod"} |= "error"[5m]))`,
+		},
+		{
+			name:     "by with label and variable without comma (Grafana pattern)",
+			input:    `sum by (job $grouping) (rate({app="test"}[5m]))`,
+			matchers: map[string]string{"env": "prod"},
+			expected: `sum by(job,$grouping)(rate({app="test", env="prod"}[5m]))`,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			result, err := p.Transform(tt.input, &tt.matchers)
+
+			assert.NoError(t, err, "Transform should not return error for grouping variables")
+			assert.Equal(t, tt.expected, result)
+
+			// Verify all original variables are preserved
+			varPattern := regexp.MustCompile(`\$\{[^}]+\}|\$\w+`)
+			inputVars := varPattern.FindAllString(tt.input, -1)
+			resultVars := varPattern.FindAllString(result, -1)
+			assert.Equal(t, len(inputVars), len(resultVars), "All variables should be preserved")
+
+			// Verify matchers were injected as key="value" pairs
+			for key, value := range tt.matchers {
+				expectedMatcher := key + `="` + value + `"`
+				assert.Contains(t, result, expectedMatcher, "Matcher should be injected: %s", expectedMatcher)
 			}
 		})
 	}
