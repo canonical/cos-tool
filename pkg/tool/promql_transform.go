@@ -163,9 +163,18 @@ var (
 // existing functions in the expression. Returns the modified query, a map of placeholder
 // function names to original variables, and any error.
 func replaceVariablesInFunctionNames(query string) (string, map[string]string, error) {
+	// Mask string literals so that variables inside quoted label values
+	// (e.g. {desc="$rate(x)"}) are not treated as function-name variables.
+	var literals []string
+	masked := doubleQuotedStringPattern.ReplaceAllStringFunc(query, func(m string) string {
+		idx := len(literals)
+		literals = append(literals, m)
+		return fmt.Sprintf(`"__LIT%d__"`, idx)
+	})
+
 	// Find which functions from the pool are already used in the expression
 	usedFunctions := make(map[string]struct{})
-	for _, m := range realFuncCallPattern.FindAllStringSubmatch(query, -1) {
+	for _, m := range realFuncCallPattern.FindAllStringSubmatch(masked, -1) {
 		usedFunctions[m[1]] = struct{}{}
 	}
 
@@ -182,7 +191,7 @@ func replaceVariablesInFunctionNames(query string) (string, map[string]string, e
 	availIdx := 0
 	var replaceErr error
 
-	result := functionNameReplacePattern.ReplaceAllStringFunc(query, func(match string) string {
+	result := functionNameReplacePattern.ReplaceAllStringFunc(masked, func(match string) string {
 		if replaceErr != nil {
 			return match
 		}
@@ -213,6 +222,11 @@ func replaceVariablesInFunctionNames(query string) (string, map[string]string, e
 	if replaceErr != nil {
 		return query, nil, replaceErr
 	}
+
+	// Restore string literals (still containing original variables, e.g. $rate(x))
+	for i, lit := range literals {
+		result = strings.ReplaceAll(result, fmt.Sprintf(`"__LIT%d__"`, i), lit)
+	}
 	return result, placeholderToVar, nil
 }
 
@@ -233,8 +247,23 @@ func restoreFunctionNameVariables(query string, placeholderToVar map[string]stri
 	})
 
 	result := query
+
+	// Mask string literals to avoid replacing placeholder function names that appear
+	// inside quoted label values (e.g. {desc="rate(x)"}).
+	var literals []string
+	result = doubleQuotedStringPattern.ReplaceAllStringFunc(result, func(m string) string {
+		idx := len(literals)
+		literals = append(literals, m)
+		return fmt.Sprintf(`"__LIT%d__"`, idx)
+	})
+
 	for _, funcName := range funcNames {
 		result = strings.ReplaceAll(result, funcName+"(", placeholderToVar[funcName]+"(")
+	}
+
+	// Restore original string literals.
+	for i, lit := range literals {
+		result = strings.ReplaceAll(result, fmt.Sprintf(`"__LIT%d__"`, i), lit)
 	}
 	return result
 }
