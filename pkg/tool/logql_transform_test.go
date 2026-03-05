@@ -785,6 +785,24 @@ func TestLogQLTransformWithGroupingVariables(t *testing.T) {
 			matchers: map[string]string{"env": "prod"},
 			expected: `sum by($grouping)(rate({job="test", env="prod"} |= "queued by ($queue $priority)"[5m]))`,
 		},
+		{
+			// Regression: backtick filter containing "by ($var1 $var2)" must not have its
+			// content rewritten. Without backtick masking, normalizeGroupingContent would
+			// insert a comma: "by ($queue $priority)" → "by ($queue, $priority)".
+			// Note: the LogQL parser canonicalises backtick strings to double-quoted output.
+			name:     "by pattern inside backtick filter must not be modified",
+			input:    "{app=\"foo\"} |= `queued by ($queue $priority)`",
+			matchers: map[string]string{"env": "prod"},
+			expected: `{app="foo", env="prod"} |= "queued by ($queue $priority)"`,
+		},
+		{
+			// Regression: backtick template in line_format containing "by ($var1 $var2)"
+			// must not have commas inserted. The real by($grouping) clause must still work.
+			name:     "by pattern inside backtick line_format template must not be modified",
+			input:    "sum by ($grouping) (rate({app=\"foo\"} | line_format `{{.level}} by ($grouping $extra)` [5m]))",
+			matchers: map[string]string{"env": "prod"},
+			expected: `sum by($grouping)(rate({app="foo", env="prod"} | line_format "{{.level}} by ($grouping $extra)"[5m]))`,
+		},
 	}
 
 	for _, tt := range tests {

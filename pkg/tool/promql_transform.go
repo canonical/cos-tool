@@ -134,6 +134,10 @@ var (
 	// Prevents by/without patterns inside filter strings (e.g. |= "by ($var)") from being rewritten
 	doubleQuotedStringPattern = regexp.MustCompile(`"[^"\\]*(?:\\.[^"\\]*)*"`)
 
+	// Backtick (raw) string literal pattern: LogQL supports backtick strings in filters and
+	// line_format templates (e.g. |= `by ($var)`). Must also be masked before grouping replacement.
+	backtickStringPattern = regexp.MustCompile("`[^`]*`")
+
 	// Full metric name pattern: detects when entire metric name is a variable
 	// Matches: $var{...} or ${var}{...} where variable is the complete metric name
 	fullMetricNamePattern = regexp.MustCompile(`(?:^|[,\(])\s*(` + varPattern + `)\s*\{`)
@@ -309,14 +313,16 @@ func replaceGrafanaVariablesPromQL(query string) (string, map[string]string) {
 // varPat is the variable pattern for the specific query language (PromQL or LogQL).
 // Examples: by($var) → by(__g99990000__), without(${label}) → without(__g99990001__)
 func replaceVariablesInGrouping(query string, varPat *regexp.Regexp, getPlaceholder func(string, string) string) string {
-	// Mask string literals so that by/without patterns inside quoted strings
-	// (e.g. |= "queued by ($queue $priority)" in LogQL) are not rewritten.
+	// Mask both double-quoted and backtick string literals so that by/without patterns
+	// inside strings (e.g. |= "queued by ($q)" or | line_format `by ($q $r)`) are not rewritten.
 	var literals []string
-	masked := doubleQuotedStringPattern.ReplaceAllStringFunc(query, func(m string) string {
+	mask := func(m string) string {
 		idx := len(literals)
 		literals = append(literals, m)
 		return fmt.Sprintf(`"__LIT%d__"`, idx)
-	})
+	}
+	masked := doubleQuotedStringPattern.ReplaceAllStringFunc(query, mask)
+	masked = backtickStringPattern.ReplaceAllStringFunc(masked, mask)
 
 	result := groupingContentPattern.ReplaceAllStringFunc(masked, func(match string) string {
 		parts := groupingContentPattern.FindStringSubmatch(match)
