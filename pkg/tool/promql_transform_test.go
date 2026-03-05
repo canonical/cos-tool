@@ -622,17 +622,16 @@ func TestPromQLFunctionNameVariablePoolExhausted(t *testing.T) {
 	assert.Contains(t, err.Error(), "cannot safely replace function name variable")
 }
 
-// TestPromQLSameVariableInGroupingAndDuration documents a known bug: when the same Grafana
-// variable appears in both a by/without clause and a duration bracket, the shared placeholder
-// cache assigns a __g%d__ identifier to the variable (because grouping runs first). That same
-// identifier is then used in the duration bracket, which makes the PromQL parser fail because
-// __g99990000__ is not a valid duration string.
+// TestPromQLSameVariableInGroupingAndDuration is a regression test for a previously known bug:
+// when the same Grafana variable appeared in both a by/without clause and a duration bracket,
+// the shared placeholder cache assigned a __g%d__ identifier to the variable (because grouping
+// ran first). That same identifier was then reused in the duration bracket, which made the
+// PromQL parser fail because __g99990000__ is not a valid duration string.
 func TestPromQLSameVariableInGroupingAndDuration(t *testing.T) {
 	p := &tool.PromQL{}
 	matchers := map[string]string{"env": "prod"}
-	// $interval is used both as a grouping label AND as a range duration — the cache assigns
-	// the __g%d__ format on the first encounter (grouping) and reuses it for the duration,
-	// causing a parse error.
+	// $interval is used both as a grouping label AND as a range duration. This verifies that
+	// the placeholder cache no longer reuses the __g%d__ identifier in the duration position.
 	input := `sum by ($interval) (rate({job="test"}[$interval]))`
 	result, err := p.Transform(input, &matchers)
 	assert.NoError(t, err, "same variable in grouping and duration should not cause a parse error")

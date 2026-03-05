@@ -113,8 +113,11 @@ var (
 // Returns modified query and map of placeholder→original variable for restoration
 func replaceGrafanaVariables(query string) (string, map[string]string) {
 	replacements := make(map[string]string)
-	variableToPlaceholder := make(map[string]string) // Ensures same variable gets same placeholder
-	quotedPlaceholders := make(map[string]bool)      // Tracks original quote state for restoration
+	quotedPlaceholders := make(map[string]bool) // Tracks original quote state for restoration
+	// Cache keyed by (format, variable) so that the same variable can get different placeholder
+	// kinds depending on position: e.g. __g%d__ for grouping, %ds for durations, %d for values.
+	type cacheKey struct{ format, variable string }
+	variableToPlaceholder := make(map[cacheKey]string)
 	// counter generates unique numeric placeholders starting at 99990000
 	// Placeholders are needed because Grafana variables ($var, ${var}) are not valid LogQL syntax
 	// and would cause parsing errors. We replace them with valid placeholders, parse/transform the query,
@@ -124,12 +127,13 @@ func replaceGrafanaVariables(query string) (string, map[string]string) {
 
 	// Returns existing placeholder or creates new one for variable (without quotes)
 	getPlaceholder := func(variable string, format string) string {
-		if placeholder, exists := variableToPlaceholder[variable]; exists {
+		key := cacheKey{format, variable}
+		if placeholder, exists := variableToPlaceholder[key]; exists {
 			return placeholder
 		}
 
 		placeholder := fmt.Sprintf(format, counter)
-		variableToPlaceholder[variable] = placeholder
+		variableToPlaceholder[key] = placeholder
 		replacements[placeholder] = variable
 		counter++
 		return placeholder
@@ -137,12 +141,13 @@ func replaceGrafanaVariables(query string) (string, map[string]string) {
 
 	// Returns existing placeholder or creates new one for variable (with quotes metadata)
 	getPlaceholderQuoted := func(variable string, format string) string {
-		if placeholder, exists := variableToPlaceholder[variable]; exists {
+		key := cacheKey{format, variable}
+		if placeholder, exists := variableToPlaceholder[key]; exists {
 			return placeholder
 		}
 
 		placeholder := fmt.Sprintf(format, counter)
-		variableToPlaceholder[variable] = placeholder
+		variableToPlaceholder[key] = placeholder
 		replacements[placeholder] = variable
 		quotedPlaceholders[placeholder] = true
 		counter++
@@ -152,21 +157,7 @@ func replaceGrafanaVariables(query string) (string, map[string]string) {
 	result := query
 
 	// Replace in order of specificity: grouping, durations, label values, then general variables
-	// Grouping uses its own variable tracking to avoid format conflicts when the same
-	// variable appears in both grouping and label value positions
-	groupingVarToPlaceholder := make(map[string]string)
-	getGroupingPlaceholder := func(variable string, format string) string {
-		if placeholder, exists := groupingVarToPlaceholder[variable]; exists {
-			return placeholder
-		}
-
-		placeholder := fmt.Sprintf(format, counter)
-		groupingVarToPlaceholder[variable] = placeholder
-		replacements[placeholder] = variable
-		counter++
-		return placeholder
-	}
-	result = replaceVariablesInGrouping(result, logQLGeneralVariablePattern, getGroupingPlaceholder)
+	result = replaceVariablesInGrouping(result, logQLGeneralVariablePattern, getPlaceholder)
 
 	result = replaceLogQLVariablesInDurations(result, getPlaceholder)
 
