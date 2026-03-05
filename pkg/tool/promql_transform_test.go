@@ -417,6 +417,12 @@ func TestPromQLTransformWithGroupingVariables(t *testing.T) {
 			matchers: map[string]string{"env": "prod"},
 			expected: `sum without ($exclude) (rate(up{env="prod"}[5m]))`,
 		},
+		{
+			name:     "by pattern inside label value string must not be modified",
+			input:    `sum by ($grouping) (metric{desc="sorted by ($col $dir)"})`,
+			matchers: map[string]string{"env": "prod"},
+			expected: `sum by ($grouping) (metric{desc="sorted by ($col $dir)",env="prod"})`,
+		},
 	}
 
 	for _, tt := range tests {

@@ -779,6 +779,12 @@ func TestLogQLTransformWithGroupingVariables(t *testing.T) {
 			matchers: map[string]string{"env": "prod"},
 			expected: `sum by(job,$grouping)(rate({app="test", env="prod"}[5m]))`,
 		},
+		{
+			name:     "by pattern inside string literal must not be modified",
+			input:    `sum by ($grouping) (rate({job="test"} |= "queued by ($queue $priority)" [5m]))`,
+			matchers: map[string]string{"env": "prod"},
+			expected: `sum by($grouping)(rate({job="test", env="prod"} |= "queued by ($queue $priority)"[5m]))`,
+		},
 	}
 
 	for _, tt := range tests {

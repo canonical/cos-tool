@@ -130,6 +130,10 @@ var (
 	// Used to replace variables inside grouping clauses with valid placeholders
 	groupingContentPattern = regexp.MustCompile(`\b((?:by|without)\s*\()([^)]*)(\))`)
 
+	// Double-quoted string literal pattern: used to mask string contents before grouping replacement
+	// Prevents by/without patterns inside filter strings (e.g. |= "by ($var)") from being rewritten
+	doubleQuotedStringPattern = regexp.MustCompile(`"[^"\\]*(?:\\.[^"\\]*)*"`)
+
 	// Full metric name pattern: detects when entire metric name is a variable
 	// Matches: $var{...} or ${var}{...} where variable is the complete metric name
 	fullMetricNamePattern = regexp.MustCompile(`(?:^|[,\(])\s*(` + varPattern + `)\s*\{`)
@@ -276,7 +280,16 @@ func replaceGrafanaVariablesPromQL(query string) (string, map[string]string) {
 // varPat is the variable pattern for the specific query language (PromQL or LogQL).
 // Examples: by($var) → by(__g99990000__), without(${label}) → without(__g99990001__)
 func replaceVariablesInGrouping(query string, varPat *regexp.Regexp, getPlaceholder func(string, string) string) string {
-	return groupingContentPattern.ReplaceAllStringFunc(query, func(match string) string {
+	// Mask string literals so that by/without patterns inside quoted strings
+	// (e.g. |= "queued by ($queue $priority)" in LogQL) are not rewritten.
+	var literals []string
+	masked := doubleQuotedStringPattern.ReplaceAllStringFunc(query, func(m string) string {
+		idx := len(literals)
+		literals = append(literals, m)
+		return fmt.Sprintf(`"__LIT%d__"`, idx)
+	})
+
+	result := groupingContentPattern.ReplaceAllStringFunc(masked, func(match string) string {
 		parts := groupingContentPattern.FindStringSubmatch(match)
 		if len(parts) < 4 {
 			return match
@@ -295,6 +308,12 @@ func replaceVariablesInGrouping(query string, varPat *regexp.Regexp, getPlacehol
 		newContent = normalizeGroupingContent(newContent)
 		return prefix + newContent + suffix
 	})
+
+	// Restore original string literals
+	for i, lit := range literals {
+		result = strings.ReplaceAll(result, fmt.Sprintf(`"__LIT%d__"`, i), lit)
+	}
+	return result
 }
 
 // normalizeGroupingContent ensures proper comma separation between labels in grouping clauses.
