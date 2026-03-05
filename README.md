@@ -61,11 +61,49 @@ rate({filename="myfile", juju_application="proxy", juju_model="cos", juju_model_
 
 ### Grafana template variables
 
-Grafana dashboard expressions often contain template variables such as `$job`, `${grouping}`,
-or `${metric:value}`. cos-tool preserves these variables while injecting the topology matchers,
-so the transformed expression remains valid for Grafana to evaluate at render time.
+Grafana dashboard expressions often contain template variables such as `$job`, `${grouping}` or
+`${metric:value}`. cos-tool preserves these variables while injecting the topology matchers, so
+the transformed expression remains valid for Grafana to evaluate at render time.
 
-**Function-name variables** (a variable that resolves to a PromQL/LogQL function name):
+#### Supported patterns
+
+**PromQL**
+
+| Pattern | Example |
+|---|---|
+| Label value | `{job="$job", instance=~"${instance}"}` |
+| Duration / range | `rate(metric[$__rate_interval])` |
+| Full metric name | `${metric_name}{label="value"}` |
+| Metric name suffix | `http_requests${_total}{label="value"}` |
+| Function name | `${fn:value}(metric[5m])` |
+| Grouping label | `sum by ($grouping) (expr)`, `sum(expr) without ($exclude)` |
+| Function argument | `topk($limit, metric{label="value"})` |
+
+**LogQL**
+
+| Pattern | Example |
+|---|---|
+| Label value | `{job="$job", instance=~"${instance}"}` |
+| Duration / range | `rate({app="nginx"}[$__rate_interval])` |
+| Grouping label | `sum by ($grouping) (rate({job="$job"}[5m]))` |
+| Filter string | `\|= "$pattern"` |
+
+#### Known limitations
+
+**Variable prefixes in metric names** (PromQL only) are not supported:
+
+```promql
+${prefix}_requests_total{label="value"}  # ❌ not supported — results in a parse error
+```
+
+Metric names should identify a specific measurement type. The base name is the semantic identity of
+what's being measured. Variable prefixes would make this identity undefined, breaking the semantic
+contract of metrics.
+In practice, suffixes like `_total` or `_bytes` are conventional modifiers, but prefixes would be the metric name itself.
+
+#### Examples
+
+**Function-name variables** — a variable that resolves to a PromQL function name at render time:
 
 ```bash
 $ ./cos-tool --format promql transform \
@@ -79,7 +117,8 @@ Outputs:
 sum by (receiver, $grouping) (${metric:value}(otelcol_receiver_accepted_metric_points${suffix_total}{job="$job",juju_model="otelcol",receiver=~"$receiver"}[$__rate_interval]))
 ```
 
-**Grouping variables** in `by`/`without` clauses (with or without commas between labels):
+**Grouping variables** in `by`/`without` clauses — commas between static labels and variables are
+optional in Grafana, cos-tool normalises them automatically:
 
 ```bash
 $ ./cos-tool --format logql transform \
@@ -95,10 +134,9 @@ sum by($grouping)(rate({job="$job", juju_model="cos"}[5m]))
 
 > **Note — `by`/`without` clause position:** PromQL and LogQL accept grouping clauses both before
 > and after the aggregated expression (`sum by (...) (expr)` and `sum(expr) by (...)` are
-> equivalent). cos-tool parses the expression into an AST and serialises it back to string, and
-> the parser always emits the **prefix form** (`sum by (...) (expr)`) regardless of which form was
-> used in the input. This is a cosmetic difference only — both forms are evaluated identically by
-> Prometheus, Grafana and Loki.
+> equivalent). cos-tool always emits the **prefix form** (`sum by (...) (expr)`) regardless of
+> which form was used in the input. This is a cosmetic difference only — both forms are evaluated
+> identically by Prometheus, Grafana and Loki.
 
 ### Alert rule validation
 
