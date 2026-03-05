@@ -86,7 +86,7 @@ the transformed expression remains valid for Grafana to evaluate at render time.
 | Label value | `{job="$job", instance=~"${instance}"}` |
 | Duration / range | `rate({app="nginx"}[$__rate_interval])` |
 | Grouping label | `sum by ($grouping) (rate({job="$job"}[5m]))` |
-| Filter string | `\|= "$pattern"` |
+| Filter string | <code>|= "$pattern"</code> |
 
 #### Known limitations
 

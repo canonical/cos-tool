@@ -276,7 +276,12 @@ func restoreFunctionNameVariables(query string, placeholderToVar map[string]stri
 // Processes variables in order: full metric names, metric name components, durations, and label values
 func replaceGrafanaVariablesPromQL(query string) (string, map[string]string) {
 	replacements := make(map[string]string)
-	variableToPlaceholder := make(map[string]string) // Track same variable → same placeholder
+	// Cache keyed by (format, variable) so that the same variable can get different placeholder
+	// kinds depending on position: e.g. __g%d__ for grouping, %d for durations/values.
+	// Without this, a variable that appears in both a grouping clause and a duration bracket
+	// would reuse the __g%d__ identifier in the duration position, causing a parse error.
+	type cacheKey struct{ format, variable string }
+	variableToPlaceholder := make(map[cacheKey]string)
 	// counter generates unique numeric placeholders starting at 99990000
 	// Placeholders are needed because Grafana variables ($var, ${var}) are not valid PromQL syntax
 	// and would cause parsing errors. We replace them with valid placeholders, parse/transform the query,
@@ -285,14 +290,15 @@ func replaceGrafanaVariablesPromQL(query string) (string, map[string]string) {
 	counter := 99990000
 
 	// Helper closure to get or create placeholder for a variable
-	// Ensures same variable always gets same placeholder across all positions
+	// Ensures same variable in the same syntactic position always gets the same placeholder
 	getPlaceholder := func(variable string, format string) string {
-		if placeholder, exists := variableToPlaceholder[variable]; exists {
+		key := cacheKey{format, variable}
+		if placeholder, exists := variableToPlaceholder[key]; exists {
 			return placeholder
 		}
 
 		placeholder := fmt.Sprintf(format, counter)
-		variableToPlaceholder[variable] = placeholder
+		variableToPlaceholder[key] = placeholder
 		replacements[placeholder] = variable
 		counter++
 		return placeholder
