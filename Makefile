@@ -6,8 +6,8 @@ export PATH := $(shell go env GOPATH)/bin:$(PATH)
 test:
 	go test ./... -coverprofile coverage.out
 
-test-integration:
-	./tests/integration/run_integration_tests.sh
+test-integration: build
+	./tests/integration/run_integration_tests.sh --label-matcher juju_model=test-integration
 
 lint:
 	@if ! command -v golangci-lint >/dev/null 2>&1; then \
