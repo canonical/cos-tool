@@ -7,7 +7,7 @@ test:
 	go test ./... -coverprofile coverage.out
 
 test-integration: build
-	./tests/integration/run_integration_tests.sh --label-matcher juju_model=test-integration
+	EXPECTED_LABEL='juju_model="test-integration"' ./tests/integration/run_integration_tests.sh --label-matcher juju_model=test-integration
 
 lint:
 	@if ! command -v golangci-lint >/dev/null 2>&1; then \

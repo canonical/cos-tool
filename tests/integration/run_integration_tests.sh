@@ -39,9 +39,22 @@ for dashboard_file in "${DASHBOARD_DIR}"/*.json; do
             d_fail=$((d_fail + 1))
             ERRORS+=("FAIL [${dashboard}/${format}] ${expr:0:80}")
             ERRORS+=("     output: ${output}")
-        else
-            d_pass=$((d_pass + 1))
+            return
         fi
+        # If EXPECTED_LABEL is set, assert the injected matcher appears in the output.
+        # cos-tool skips injection when the label already exists in the expression, so we
+        # accept output that already contains the label key (with any operator).
+        if [[ -n "${EXPECTED_LABEL:-}" ]]; then
+            local label_key="${EXPECTED_LABEL%%=*}"
+            if [[ "${output}" != *"${EXPECTED_LABEL}"* && "${output}" != *"${label_key}="* && "${output}" != *"${label_key}=~"* ]]; then
+                d_fail=$((d_fail + 1))
+                ERRORS+=("FAIL [${dashboard}/${format}] label '${EXPECTED_LABEL}' not found in output")
+                ERRORS+=("     expr:   ${expr:0:80}")
+                ERRORS+=("     output: ${output}")
+                return
+            fi
+        fi
+        d_pass=$((d_pass + 1))
     }
 
     while IFS= read -r -d '' expr; do
