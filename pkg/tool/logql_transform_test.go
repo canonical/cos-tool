@@ -490,10 +490,11 @@ func TestGrafanaVariableReplacement(t *testing.T) {
 
 func TestGrafanaVariableEdgeCases(t *testing.T) {
 	testCases := []struct {
-		name     string
-		input    string
-		matchers map[string]string
-		wantErr  bool
+		name         string
+		input        string
+		matchers     map[string]string
+		wantErr      bool
+		wantContains []string // extra substrings the output must contain
 	}{
 		// Basic variable placement tests
 		{
@@ -583,6 +584,10 @@ func TestGrafanaVariableEdgeCases(t *testing.T) {
 			input:    `sum by($group_by) (rate({job="test"}[5m]))`,
 			matchers: map[string]string{"namespace": "kube"},
 			wantErr:  false,
+			wantContains: []string{
+				`namespace="kube"`, // injected matcher must be present
+				`$group_by`,        // grouping variable must be preserved
+			},
 		},
 		{
 			name:     "Variable in duration range (structural position)",
@@ -608,6 +613,10 @@ func TestGrafanaVariableEdgeCases(t *testing.T) {
 			} else {
 				assert.NoError(t, err)
 				assert.NotEmpty(t, result)
+
+				for _, s := range tc.wantContains {
+					assert.Contains(t, result, s)
+				}
 
 				// Verify matchers were injected
 				for key, value := range tc.matchers {
