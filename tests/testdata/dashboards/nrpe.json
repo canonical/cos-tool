@@ -1,0 +1,703 @@
+{
+  "annotations": {
+    "list": [
+      {
+        "builtIn": 1,
+        "datasource": {
+          "type": "grafana",
+          "uid": "-- Grafana --"
+        },
+        "enable": true,
+        "hide": true,
+        "iconColor": "rgba(0, 211, 255, 1)",
+        "name": "Annotations & Alerts",
+        "target": {
+          "limit": 100,
+          "matchAny": false,
+          "tags": [],
+          "type": "dashboard"
+        },
+        "type": "dashboard"
+      }
+    ]
+  },
+  "editable": true,
+  "fiscalYearStartMonth": 0,
+  "graphTooltip": 0,
+  "id": 18,
+  "links": [],
+  "liveNow": false,
+  "panels": [
+    {
+      "collapsed": false,
+      "gridPos": {
+        "h": 1,
+        "w": 24,
+        "x": 0,
+        "y": 0
+      },
+      "id": 10,
+      "panels": [],
+      "title": "NRPE Commands Status",
+      "type": "row"
+    },
+    {
+      "datasource": {
+        "type": "prometheus",
+        "uid": "$prometheusds"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "thresholds"
+          },
+          "custom": {
+            "fillOpacity": 70,
+            "lineWidth": 0,
+            "spanNulls": false
+          },
+          "decimals": 1,
+          "mappings": [],
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "red",
+                "value": null
+              },
+              {
+                "color": "green",
+                "value": 1
+              }
+            ]
+          },
+          "unit": "short"
+        },
+        "overrides": []
+      },
+      "gridPos": {
+        "h": 4,
+        "w": 24,
+        "x": 0,
+        "y": 1
+      },
+      "id": 8,
+      "options": {
+        "alignValue": "left",
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom",
+          "showLegend": false
+        },
+        "mergeValues": true,
+        "rowHeight": 0.9,
+        "showValue": "never",
+        "tooltip": {
+          "mode": "single",
+          "sort": "none"
+        }
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "$prometheusds"
+          },
+          "editorMode": "builder",
+          "expr": "command_ok{juju_application=~\"$juju_application\", juju_unit=~\"$juju_unit\"}",
+          "legendFormat": "{{command}} ({{juju_unit}})",
+          "range": true,
+          "refId": "A"
+        }
+      ],
+      "title": "NRPE Command Status",
+      "type": "state-timeline"
+    },
+    {
+      "datasource": {
+        "type": "loki",
+        "uid": "$lokids"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "thresholds"
+          },
+          "custom": {
+            "align": "auto",
+            "displayMode": "auto",
+            "inspect": false
+          },
+          "mappings": [],
+          "min": -2,
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              },
+              {
+                "color": "red",
+                "value": 80
+              }
+            ]
+          }
+        },
+        "overrides": [
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Status"
+            },
+            "properties": [
+              {
+                "id": "mappings",
+                "value": [
+                  {
+                    "options": {
+                      "0": {
+                        "index": 0,
+                        "text": "✔️"
+                      },
+                      "1": {
+                        "index": 1,
+                        "text": "⚠️"
+                      },
+                      "2": {
+                        "index": 2,
+                        "text": "❌"
+                      },
+                      "3": {
+                        "index": 3,
+                        "text": "❓"
+                      }
+                    },
+                    "type": "value"
+                  }
+                ]
+              }
+            ]
+          }
+        ]
+      },
+      "gridPos": {
+        "h": 7,
+        "w": 24,
+        "x": 0,
+        "y": 5
+      },
+      "id": 15,
+      "options": {
+        "footer": {
+          "fields": "",
+          "reducer": [
+            "sum"
+          ],
+          "show": false
+        },
+        "showHeader": true,
+        "sortBy": []
+      },
+      "pluginVersion": "9.2.1",
+      "targets": [
+        {
+          "datasource": {
+            "type": "loki",
+            "uid": "$lokids"
+          },
+          "editorMode": "code",
+          "expr": "{juju_unit=~\"$juju_unit\"} | json | level = `info` | command =~ `.+`",
+          "queryType": "range",
+          "refId": "A",
+          "resolution": 1
+        }
+      ],
+      "title": "NRPE Checks Overview",
+      "transformations": [
+        {
+          "id": "extractFields",
+          "options": {
+            "format": "json",
+            "replace": true,
+            "source": "Line"
+          }
+        },
+        {
+          "id": "groupBy",
+          "options": {
+            "fields": {
+              "Last Check": {
+                "aggregations": [
+                  "lastNotNull"
+                ],
+                "operation": "aggregate"
+              },
+              "command": {
+                "aggregations": [],
+                "operation": "groupby"
+              },
+              "command_output": {
+                "aggregations": [
+                  "lastNotNull"
+                ],
+                "operation": "aggregate"
+              },
+              "juju_unit": {
+                "aggregations": [],
+                "operation": "groupby"
+              },
+              "return_code": {
+                "aggregations": [
+                  "lastNotNull"
+                ],
+                "operation": "aggregate"
+              },
+              "ts": {
+                "aggregations": [
+                  "lastNotNull"
+                ],
+                "operation": "aggregate"
+              }
+            }
+          }
+        },
+        {
+          "id": "organize",
+          "options": {
+            "excludeByName": {
+              "address": true,
+              "caller": true,
+              "composite_key": true,
+              "duration": true,
+              "ip_address": true,
+              "juju_application": true,
+              "level": true,
+              "msg": true,
+              "output": true,
+              "ts": false
+            },
+            "indexByName": {
+              "command": 1,
+              "command_output (lastNotNull)": 3,
+              "juju_unit": 0,
+              "return_code (lastNotNull)": 2,
+              "ts (lastNotNull)": 4
+            },
+            "renameByName": {
+              "command": "Command",
+              "command_output (lastNotNull)": "Output",
+              "juju_unit": "Juju Unit",
+              "return_code (lastNotNull)": "Status",
+              "ts": "Last Check",
+              "ts (lastNotNull)": "Last check"
+            }
+          }
+        },
+        {
+          "id": "sortBy",
+          "options": {
+            "fields": {},
+            "sort": [
+              {
+                "desc": true,
+                "field": "Status"
+              }
+            ]
+          }
+        }
+      ],
+      "type": "table"
+    },
+    {
+      "datasource": {
+        "type": "prometheus",
+        "uid": "$prometheusds"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "palette-classic"
+          },
+          "custom": {
+            "axisCenteredZero": false,
+            "axisColorMode": "text",
+            "axisLabel": "",
+            "axisPlacement": "auto",
+            "barAlignment": 0,
+            "drawStyle": "line",
+            "fillOpacity": 0,
+            "gradientMode": "none",
+            "hideFrom": {
+              "legend": false,
+              "tooltip": false,
+              "viz": false
+            },
+            "lineInterpolation": "linear",
+            "lineWidth": 1,
+            "pointSize": 5,
+            "scaleDistribution": {
+              "type": "linear"
+            },
+            "showPoints": "auto",
+            "spanNulls": false,
+            "stacking": {
+              "group": "A",
+              "mode": "none"
+            },
+            "thresholdsStyle": {
+              "mode": "off"
+            }
+          },
+          "mappings": [],
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              },
+              {
+                "color": "red",
+                "value": 80
+              }
+            ]
+          },
+          "unit": "s"
+        },
+        "overrides": []
+      },
+      "gridPos": {
+        "h": 9,
+        "w": 12,
+        "x": 0,
+        "y": 12
+      },
+      "id": 2,
+      "options": {
+        "legend": {
+          "calcs": [],
+          "displayMode": "list",
+          "placement": "bottom",
+          "showLegend": true
+        },
+        "tooltip": {
+          "mode": "single",
+          "sort": "none"
+        }
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "$prometheusds"
+          },
+          "editorMode": "builder",
+          "expr": "command_duration{juju_application=\"nrpe\"}",
+          "legendFormat": "{{command}} ({{juju_unit}})",
+          "range": true,
+          "refId": "A"
+        }
+      ],
+      "title": "NRPE Command Duration",
+      "type": "timeseries"
+    },
+    {
+      "datasource": {
+        "type": "prometheus",
+        "uid": "$prometheusds"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "palette-classic"
+          },
+          "custom": {
+            "axisCenteredZero": false,
+            "axisColorMode": "text",
+            "axisLabel": "",
+            "axisPlacement": "auto",
+            "barAlignment": 0,
+            "drawStyle": "line",
+            "fillOpacity": 0,
+            "gradientMode": "none",
+            "hideFrom": {
+              "legend": false,
+              "tooltip": false,
+              "viz": false
+            },
+            "lineInterpolation": "linear",
+            "lineWidth": 1,
+            "pointSize": 5,
+            "scaleDistribution": {
+              "type": "linear"
+            },
+            "showPoints": "auto",
+            "spanNulls": false,
+            "stacking": {
+              "group": "A",
+              "mode": "none"
+            },
+            "thresholdsStyle": {
+              "mode": "off"
+            }
+          },
+          "mappings": [],
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              },
+              {
+                "color": "red",
+                "value": 80
+              }
+            ]
+          },
+          "unit": "s"
+        },
+        "overrides": []
+      },
+      "gridPos": {
+        "h": 9,
+        "w": 12,
+        "x": 12,
+        "y": 12
+      },
+      "id": 16,
+      "options": {
+        "legend": {
+          "calcs": [],
+          "displayMode": "list",
+          "placement": "bottom",
+          "showLegend": true
+        },
+        "tooltip": {
+          "mode": "single",
+          "sort": "none"
+        }
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "$prometheusds"
+          },
+          "editorMode": "builder",
+          "expr": "scrape_duration_seconds{juju_application=~\"$juju_application\", juju_unit=~\"$juju_unit\"}",
+          "legendFormat": "{{command}} ({{juju_unit}})",
+          "range": true,
+          "refId": "A"
+        }
+      ],
+      "title": "NRPE Scrape Duration",
+      "type": "timeseries"
+    },
+    {
+      "datasource": {
+        "type": "loki",
+        "uid": "$lokids"
+      },
+      "gridPos": {
+        "h": 12,
+        "w": 24,
+        "x": 0,
+        "y": 21
+      },
+      "id": 14,
+      "options": {
+        "dedupStrategy": "signature",
+        "enableLogDetails": true,
+        "prettifyLogMessage": true,
+        "showCommonLabels": false,
+        "showLabels": false,
+        "showTime": true,
+        "sortOrder": "Descending",
+        "wrapLogMessage": true
+      },
+      "pluginVersion": "9.2.1",
+      "targets": [
+        {
+          "datasource": {
+            "type": "loki",
+            "uid": "$lokids"
+          },
+          "editorMode": "builder",
+          "expr": "{juju_unit=\"$juju_unit\"} | json | level = `info` | command =~ `.+` | return_code != `0`",
+          "queryType": "range",
+          "refId": "A"
+        }
+      ],
+      "title": "NRPE Critical Logs",
+      "type": "logs"
+    },
+    {
+      "collapsed": false,
+      "gridPos": {
+        "h": 1,
+        "w": 24,
+        "x": 0,
+        "y": 33
+      },
+      "id": 18,
+      "panels": [],
+      "title": "NRPE Logs",
+      "type": "row"
+    },
+    {
+      "datasource": {
+        "type": "loki",
+        "uid": "$lokids"
+      },
+      "gridPos": {
+        "h": 14,
+        "w": 24,
+        "x": 0,
+        "y": 34
+      },
+      "id": 7,
+      "options": {
+        "dedupStrategy": "signature",
+        "enableLogDetails": true,
+        "prettifyLogMessage": false,
+        "showCommonLabels": false,
+        "showLabels": false,
+        "showTime": false,
+        "sortOrder": "Descending",
+        "wrapLogMessage": false
+      },
+      "pluginVersion": "9.2.1",
+      "targets": [
+        {
+          "datasource": {
+            "type": "loki",
+            "uid": "$lokids"
+          },
+          "editorMode": "builder",
+          "expr": "{juju_unit=\"$juju_unit\"} | json | level = `info` | command =~ `.+`",
+          "queryType": "range",
+          "refId": "A"
+        }
+      ],
+      "title": "NRPE Logs",
+      "type": "logs"
+    }
+  ],
+  "schemaVersion": 37,
+  "style": "dark",
+  "tags": [],
+  "templating": {
+    "list": [
+      {
+        "current": {
+          "selected": false,
+          "text": [
+            "All"
+          ],
+          "value": [
+            "$__all"
+          ]
+        },
+        "datasource": {
+          "type": "prometheus",
+          "uid": "$prometheusds"
+        },
+        "definition": "label_values(up{juju_application=~\"$juju_application\"}, juju_unit)",
+        "hide": 0,
+        "includeAll": true,
+        "multi": true,
+        "name": "juju_unit",
+        "options": [],
+        "query": {
+          "query": "label_values(up{juju_application=~\"$juju_application\"}, juju_unit)",
+          "refId": "StandardVariableQuery"
+        },
+        "refresh": 1,
+        "regex": "",
+        "skipUrlSync": false,
+        "sort": 0,
+        "type": "query"
+      },
+      {
+        "current": {
+          "selected": true,
+          "text": [
+            "All"
+          ],
+          "value": [
+            "$__all"
+          ]
+        },
+        "hide": 0,
+        "includeAll": true,
+        "multi": true,
+        "name": "prometheusds",
+        "options": [],
+        "query": "prometheus",
+        "refresh": 1,
+        "regex": "",
+        "skipUrlSync": false,
+        "type": "datasource"
+      },
+      {
+        "current": {
+          "selected": true,
+          "text": [
+            "nrpe"
+          ],
+          "value": [
+            "nrpe"
+          ]
+        },
+        "datasource": {
+          "type": "prometheus",
+          "uid": "$prometheusds"
+        },
+        "definition": "label_values(up, juju_application)",
+        "hide": 0,
+        "includeAll": true,
+        "multi": true,
+        "name": "juju_application",
+        "options": [],
+        "query": {
+          "query": "label_values(up, juju_application)",
+          "refId": "StandardVariableQuery"
+        },
+        "refresh": 1,
+        "regex": "",
+        "skipUrlSync": false,
+        "sort": 0,
+        "type": "query"
+      },
+      {
+        "current": {
+          "selected": false,
+          "text": "All",
+          "value": "$__all"
+        },
+        "hide": 0,
+        "includeAll": true,
+        "multi": true,
+        "name": "lokids",
+        "options": [],
+        "query": "loki",
+        "refresh": 1,
+        "regex": "",
+        "skipUrlSync": false,
+        "type": "datasource"
+      }
+    ]
+  },
+  "time": {
+    "from": "now-3h",
+    "to": "now"
+  },
+  "timepicker": {},
+  "timezone": "",
+  "title": "NRPE Metrics and Logs",
+  "uid": "cLP8hHL4z",
+  "version": 6,
+  "weekStart": ""
+}

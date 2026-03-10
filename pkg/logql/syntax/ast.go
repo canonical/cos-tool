@@ -242,16 +242,6 @@ func newOrLineFilterExprFromFilter(left *LineFilterExpr, match string) *LineFilt
 	}
 }
 
-func newOrLineFilterExpr(left *LineFilterExpr, right *LineFilterExpr) *LineFilterExpr {
-	return &LineFilterExpr{
-		Left:  left,
-		IsOr:  true,
-		Ty:    right.Ty,
-		Match: right.Match,
-		Op:    right.Op,
-	}
-}
-
 func (e *LineFilterExpr) Walk(f WalkFn) {
 	f(e)
 	if e.Left == nil {
@@ -644,16 +634,16 @@ func newOffsetExpr(offset time.Duration) *OffsetExpr {
 
 const (
 	// vector ops
-	OpTypeSum     = "sum"
-	OpTypeAvg     = "avg"
-	OpTypeMax     = "max"
-	OpTypeMin     = "min"
-	OpTypeCount   = "count"
-	OpTypeStddev  = "stddev"
-	OpTypeStdvar  = "stdvar"
-	OpTypeBottomK = "bottomk"
-	OpTypeTopK    = "topk"
-	OpTypeSort    = "sort"
+	OpTypeSum      = "sum"
+	OpTypeAvg      = "avg"
+	OpTypeMax      = "max"
+	OpTypeMin      = "min"
+	OpTypeCount    = "count"
+	OpTypeStddev   = "stddev"
+	OpTypeStdvar   = "stdvar"
+	OpTypeBottomK  = "bottomk"
+	OpTypeTopK     = "topk"
+	OpTypeSort     = "sort"
 	OpTypeSortDesc = "sort_desc"
 
 	// range vector ops

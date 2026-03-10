@@ -835,3 +835,146 @@ func TestLogQLTransformWithGroupingVariables(t *testing.T) {
 		})
 	}
 }
+
+func TestLogQLLineFilterOr(t *testing.T) {
+	p := &tool.LogQL{}
+	cases := []struct {
+		name     string
+		input    string
+		matchers map[string]string
+		expected string
+	}{
+		{
+			name:     "or between two string values on same filter type",
+			input:    `{app="foo"} |= "level=error" or "panic:"`,
+			matchers: map[string]string{"env": "prod"},
+			expected: `{app="foo", env="prod"} |= "level=error" or |= "panic:"`,
+		},
+		{
+			name:     "or filter followed by pipeline stage",
+			input:    `{app="foo"} |= "level=error" or "panic:" | logfmt`,
+			matchers: map[string]string{"env": "prod"},
+			expected: `{app="foo", env="prod"} |= "level=error" or |= "panic:" | logfmt`,
+		},
+		{
+			name:     "or filter with negation operator",
+			input:    `{app="foo"} != "debug" or "trace"`,
+			matchers: map[string]string{"env": "prod"},
+			expected: `{app="foo", env="prod"} != "debug" or != "trace"`,
+		},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			result, err := p.Transform(c.input, &c.matchers)
+			assert.NoError(t, err)
+			assert.Equal(t, c.expected, result)
+		})
+	}
+}
+
+func TestLogQLSortFunctions(t *testing.T) {
+	p := &tool.LogQL{}
+	cases := []struct {
+		name     string
+		input    string
+		matchers map[string]string
+		expected string
+	}{
+		{
+			name:     "sort function",
+			input:    `sort(sum by (level) (count_over_time({app="foo"}[5m])))`,
+			matchers: map[string]string{"env": "prod"},
+			expected: `sort(sum by(level)(count_over_time({app="foo", env="prod"}[5m])))`,
+		},
+		{
+			name:     "sort_desc function",
+			input:    `sort_desc(topk(10, sum by (job) (count_over_time({app="foo"}[5m]))))`,
+			matchers: map[string]string{"env": "prod"},
+			expected: `sort_desc(topk(10,sum by(job)(count_over_time({app="foo", env="prod"}[5m]))))`,
+		},
+		{
+			name:     "sort_desc with label matcher injection",
+			input:    `sort_desc(sum by (job) (count_over_time({app="foo"}[5m])))`,
+			matchers: map[string]string{"env": "prod"},
+			expected: `sort_desc(sum by(job)(count_over_time({app="foo", env="prod"}[5m])))`,
+		},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			result, err := p.Transform(c.input, &c.matchers)
+			assert.NoError(t, err)
+			assert.Equal(t, c.expected, result)
+		})
+	}
+}
+
+// Tests that $__auto (Grafana's automatic interval variable) is preserved through
+// transformation, both in plain log queries and wrapped in range aggregations.
+// Sourced from real-world loki-bloom-compactor and loki-operational dashboards.
+func TestLogQLAutoInterval(t *testing.T) {
+	p := &tool.LogQL{}
+	cases := []struct {
+		name     string
+		input    string
+		matchers map[string]string
+		expected string
+	}{
+		{
+			name:     "$__auto in count_over_time with line filter",
+			input:    `count_over_time({container="bloom-compactor"} |= "level=error" [$__auto])`,
+			matchers: map[string]string{"env": "prod"},
+			expected: `count_over_time({container="bloom-compactor", env="prod"} |= "level=error"[$__auto])`,
+		},
+		{
+			name:     "$__auto in rate with logfmt parser and label filter",
+			input:    `sum(rate({job="distributor"} | logfmt | level="error"[$__auto]))`,
+			matchers: map[string]string{"env": "prod"},
+			expected: `sum(rate({job="distributor", env="prod"} | logfmt | level="error"[$__auto]))`,
+		},
+		{
+			name:     "$__auto with logfmt parser and Grafana variables in stream selector",
+			input:    `sum(rate({cluster="$cluster", namespace="$namespace"} | logfmt | level="error"[$__auto]))`,
+			matchers: map[string]string{"juju_model": "test"},
+			expected: `sum(rate({cluster="$cluster", namespace="$namespace", juju_model="test"} | logfmt | level="error"[$__auto]))`,
+		},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			result, err := p.Transform(c.input, &c.matchers)
+			assert.NoError(t, err)
+			assert.Equal(t, c.expected, result)
+		})
+	}
+}
+
+// Tests that backtick strings in label filter comparisons are canonicalised to
+// double-quoted strings by the parser. Sourced from real-world nrpe dashboard.
+func TestLogQLBacktickLabelFilters(t *testing.T) {
+	p := &tool.LogQL{}
+	cases := []struct {
+		name     string
+		input    string
+		matchers map[string]string
+		expected string
+	}{
+		{
+			name:     "backtick string in equality and regex label filters",
+			input:    "{juju_unit=~\"$juju_unit\"} | json | level = `info` | command =~ `.+`",
+			matchers: map[string]string{"juju_model": "test"},
+			expected: `{juju_unit=~"$juju_unit", juju_model="test"} | json | level="info" | command=~".+"`,
+		},
+		{
+			name:     "backtick string in not-equal label filter",
+			input:    "{juju_unit=\"$juju_unit\"} | json | level = `info` | command =~ `.+` | return_code != `0`",
+			matchers: map[string]string{"juju_model": "test"},
+			expected: `{juju_unit="$juju_unit", juju_model="test"} | json | level="info" | command=~".+" | return_code!="0"`,
+		},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			result, err := p.Transform(c.input, &c.matchers)
+			assert.NoError(t, err)
+			assert.Equal(t, c.expected, result)
+		})
+	}
+}
