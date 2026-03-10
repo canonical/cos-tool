@@ -59,15 +59,17 @@ for dashboard_file in "${DASHBOARD_DIR}"/*.json; do
 
     while IFS= read -r -d '' expr; do
         run_expr "promql" "${expr}"
-    done < <(jq --raw-output0 '[.. | objects | select(has("expr") and (.expr | type) == "string" and .expr != "") | .expr] | .[]' "${dashboard_file}" 2>/dev/null)
+    done < <(jq --raw-output0 '[.. | objects | select(
+        has("expr") and (.expr | type) == "string" and .expr != ""
+        and ((.datasource | if type == "object" then .type else . end) // "" | ascii_downcase | contains("loki") | not)
+    ) | .expr] | .[]' "${dashboard_file}" 2>/dev/null)
 
     while IFS= read -r -d '' expr; do
         run_expr "logql" "${expr}"
     done < <(jq --raw-output0 '[.. | objects | select(
-        has("query") and (.query | type) == "string" and .query != ""
-        and (.datasource | (type == "object" and (.type | ascii_downcase | contains("loki")))
-             or (type == "string" and (ascii_downcase | contains("loki"))))
-    ) | .query] | .[]' "${dashboard_file}" 2>/dev/null)
+        (has("expr") or has("query"))
+        and ((.datasource | if type == "object" then .type else . end) // "" | ascii_downcase | contains("loki"))
+    ) | (if has("expr") then .expr else .query end) | select(type == "string" and . != "")] | .[]' "${dashboard_file}" 2>/dev/null)
 
     PASS=$((PASS + d_pass))
     FAIL=$((FAIL + d_fail))

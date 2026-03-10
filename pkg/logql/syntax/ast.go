@@ -209,6 +209,7 @@ func (e *PipelineExpr) HasFilter() bool {
 
 type LineFilterExpr struct {
 	Left  *LineFilterExpr
+	IsOr  bool
 	Ty    labels.MatchType
 	Match string
 	Op    string
@@ -226,6 +227,25 @@ func newLineFilterExpr(ty labels.MatchType, op, match string) *LineFilterExpr {
 func newNestedLineFilterExpr(left *LineFilterExpr, right *LineFilterExpr) *LineFilterExpr {
 	return &LineFilterExpr{
 		Left:  left,
+		Ty:    right.Ty,
+		Match: right.Match,
+		Op:    right.Op,
+	}
+}
+
+func newOrLineFilterExprFromFilter(left *LineFilterExpr, match string) *LineFilterExpr {
+	return &LineFilterExpr{
+		Left:  left,
+		IsOr:  true,
+		Ty:    left.Ty,
+		Match: match,
+	}
+}
+
+func newOrLineFilterExpr(left *LineFilterExpr, right *LineFilterExpr) *LineFilterExpr {
+	return &LineFilterExpr{
+		Left:  left,
+		IsOr:  true,
 		Ty:    right.Ty,
 		Match: right.Match,
 		Op:    right.Op,
@@ -260,7 +280,11 @@ func (e *LineFilterExpr) String() string {
 	var sb strings.Builder
 	if e.Left != nil {
 		sb.WriteString(e.Left.String())
-		sb.WriteString(" ")
+		if e.IsOr {
+			sb.WriteString(" or ")
+		} else {
+			sb.WriteString(" ")
+		}
 	}
 	switch e.Ty {
 	case labels.MatchRegexp:
@@ -285,36 +309,57 @@ func (e *LineFilterExpr) String() string {
 }
 
 func (e *LineFilterExpr) Filter() (log.Filterer, error) {
-	acc := make([]log.Filterer, 0)
+	// Collect nodes in left-to-right order (traversal is right-to-left, so reverse).
+	var nodes []*LineFilterExpr
 	for curr := e; curr != nil; curr = curr.Left {
-		switch curr.Op {
+		nodes = append(nodes, curr)
+	}
+	for i, j := 0, len(nodes)-1; i < j; i, j = i+1, j-1 {
+		nodes[i], nodes[j] = nodes[j], nodes[i]
+	}
+
+	makeNodeFilter := func(node *LineFilterExpr) (log.Filterer, error) {
+		switch node.Op {
 		case OpFilterIP:
-			var err error
-			next, err := log.NewIPLineFilter(curr.Match, curr.Ty)
-			if err != nil {
-				return nil, err
-			}
-			acc = append(acc, next)
+			return log.NewIPLineFilter(node.Match, node.Ty)
 		default:
-			next, err := log.NewFilter(curr.Match, curr.Ty)
-			if err != nil {
-				return nil, err
-			}
-			acc = append(acc, next)
+			return log.NewFilter(node.Match, node.Ty)
 		}
 	}
 
-	if len(acc) == 1 {
-		return acc[0], nil
+	// Split nodes into groups at OR junctions. Within each group, filters are AND-ed;
+	// groups themselves are OR-ed together.
+	var groups [][]log.Filterer
+	var currentGroup []log.Filterer
+	for i, node := range nodes {
+		f, err := makeNodeFilter(node)
+		if err != nil {
+			return nil, err
+		}
+		if i > 0 && nodes[i].IsOr {
+			groups = append(groups, currentGroup)
+			currentGroup = []log.Filterer{f}
+		} else {
+			currentGroup = append(currentGroup, f)
+		}
 	}
+	groups = append(groups, currentGroup)
 
-	// The accumulation is right to left so it needs to be reversed.
-	for i := len(acc)/2 - 1; i >= 0; i-- {
-		opp := len(acc) - 1 - i
-		acc[i], acc[opp] = acc[opp], acc[i]
+	var result log.Filterer
+	for _, g := range groups {
+		var groupFilter log.Filterer
+		if len(g) == 1 {
+			groupFilter = g[0]
+		} else {
+			groupFilter = log.NewAndFilters(g)
+		}
+		if result == nil {
+			result = groupFilter
+		} else {
+			result = log.NewOrFilter(result, groupFilter)
+		}
 	}
-
-	return log.NewAndFilters(acc), nil
+	return result, nil
 }
 
 func (e *LineFilterExpr) Stage() (log.Stage, error) {
@@ -608,6 +653,8 @@ const (
 	OpTypeStdvar  = "stdvar"
 	OpTypeBottomK = "bottomk"
 	OpTypeTopK    = "topk"
+	OpTypeSort    = "sort"
+	OpTypeSortDesc = "sort_desc"
 
 	// range vector ops
 	OpRangeTypeCount     = "count_over_time"
