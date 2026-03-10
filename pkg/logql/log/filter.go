@@ -175,6 +175,11 @@ type orFilter struct {
 	right Filterer
 }
 
+// NewOrFilter creates a new filter which matches only if left or right matches.
+func NewOrFilter(left Filterer, right Filterer) Filterer {
+	return newOrFilter(left, right)
+}
+
 // newOrFilter creates a new filter which matches only if left or right matches.
 func newOrFilter(left Filterer, right Filterer) Filterer {
 	if left == nil || left == TrueFilter {

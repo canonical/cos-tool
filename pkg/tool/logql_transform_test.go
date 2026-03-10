@@ -133,6 +133,28 @@ func TestLogQLTransformErrorHandling(t *testing.T) {
 	}
 }
 
+func TestLogQLTransformDoesNotDuplicateExistingLabel(t *testing.T) {
+	p := &tool.LogQL{}
+	// When the label being injected already exists in the stream selector, it must not be duplicated.
+	matchers := map[string]string{"env": "prod"}
+	result, err := p.Transform(`rate({job="test", env="existing"}[5m])`, &matchers)
+	assert.NoError(t, err)
+	assert.Equal(t, `rate({job="test", env="existing"}[5m])`, result)
+	assert.NotContains(t, result, `env="prod"`, "label already in selector must not be overwritten")
+}
+
+func TestLogQLGroupingVariableReusedAcrossClauses(t *testing.T) {
+	p := &tool.LogQL{}
+	// Same grouping variable in two separate by() clauses — hits the placeholder cache path.
+	matchers := map[string]string{"cluster": "prod"}
+	input := `sum by ($grouping) (rate({app="svc1"}[5m])) / sum by ($grouping) (rate({app="svc2"}[5m]))`
+	result, err := p.Transform(input, &matchers)
+	assert.NoError(t, err)
+	assert.Contains(t, result, `$grouping`, "grouping variable must be preserved in both clauses")
+	assert.Equal(t, 2, strings.Count(result, "$grouping"), "grouping variable must appear twice")
+	assert.Contains(t, result, `cluster="prod"`)
+}
+
 func TestLogQLTransformWithEmptyMatchers(t *testing.T) {
 	p := &tool.LogQL{}
 
@@ -468,10 +490,11 @@ func TestGrafanaVariableReplacement(t *testing.T) {
 
 func TestGrafanaVariableEdgeCases(t *testing.T) {
 	testCases := []struct {
-		name     string
-		input    string
-		matchers map[string]string
-		wantErr  bool
+		name         string
+		input        string
+		matchers     map[string]string
+		wantErr      bool
+		wantContains []string // extra substrings the output must contain
 	}{
 		// Basic variable placement tests
 		{
@@ -557,10 +580,14 @@ func TestGrafanaVariableEdgeCases(t *testing.T) {
 			wantErr:  true,
 		},
 		{
-			name:     "Variable in aggregation by clause (structural position)",
+			name:     "Variable in aggregation by clause",
 			input:    `sum by($group_by) (rate({job="test"}[5m]))`,
 			matchers: map[string]string{"namespace": "kube"},
-			wantErr:  true,
+			wantErr:  false,
+			wantContains: []string{
+				`namespace="kube"`, // injected matcher must be present
+				`$group_by`,        // grouping variable must be preserved
+			},
 		},
 		{
 			name:     "Variable in duration range (structural position)",
@@ -586,6 +613,10 @@ func TestGrafanaVariableEdgeCases(t *testing.T) {
 			} else {
 				assert.NoError(t, err)
 				assert.NotEmpty(t, result)
+
+				for _, s := range tc.wantContains {
+					assert.Contains(t, result, s)
+				}
 
 				// Verify matchers were injected
 				for key, value := range tc.matchers {
@@ -676,6 +707,274 @@ func TestGrafanaVariablesInQuotedStrings(t *testing.T) {
 					"Number of variables should be preserved. Original: %v, Result: %v",
 					originalVars, resultVars)
 			}
+		})
+	}
+}
+
+// TestLogQLTransformWithGroupingVariables tests variables in by/without clauses.
+// Variables in grouping positions should be preserved through the LogQL transform pipeline.
+func TestLogQLTransformWithGroupingVariables(t *testing.T) {
+	p := &tool.LogQL{}
+
+	tests := []struct {
+		name     string
+		input    string
+		matchers map[string]string
+		expected string
+	}{
+		{
+			name:     "by with single variable",
+			input:    `sum by ($grouping) (rate({job="test"}[5m]))`,
+			matchers: map[string]string{"env": "prod"},
+			expected: `sum by($grouping)(rate({job="test", env="prod"}[5m]))`,
+		},
+		{
+			name:     "without with single variable",
+			input:    `sum without ($exclude) (rate({job="test"}[5m]))`,
+			matchers: map[string]string{"env": "prod"},
+			expected: `sum without($exclude)(rate({job="test", env="prod"}[5m]))`,
+		},
+		{
+			name:     "by with ${var} syntax",
+			input:    `sum by (${grouping}) (rate({job="test"}[5m]))`,
+			matchers: map[string]string{"env": "prod"},
+			expected: `sum by(${grouping})(rate({job="test", env="prod"}[5m]))`,
+		},
+		{
+			name:     "by with variable and fixed labels",
+			input:    `sum by ($var, job) (rate({app="test"}[5m]))`,
+			matchers: map[string]string{"env": "prod"},
+			expected: `sum by($var,job)(rate({app="test", env="prod"}[5m]))`,
+		},
+		{
+			name:     "by with multiple variables",
+			input:    `sum by ($var1, $var2) (rate({job="test"}[5m]))`,
+			matchers: map[string]string{"env": "prod"},
+			expected: `sum by($var1,$var2)(rate({job="test", env="prod"}[5m]))`,
+		},
+		{
+			name:     "by variable combined with duration variable",
+			input:    `sum by ($grouping) (rate({job="test"}[$__rate_interval]))`,
+			matchers: map[string]string{"env": "prod"},
+			expected: `sum by($grouping)(rate({job="test", env="prod"}[$__rate_interval]))`,
+		},
+		{
+			name:     "by variable combined with label value variable",
+			input:    `sum by ($grouping) (rate({job="$job"}[5m]))`,
+			matchers: map[string]string{"env": "prod"},
+			expected: `sum by($grouping)(rate({job="$job", env="prod"}[5m]))`,
+		},
+		{
+			name:     "by variable combined with all other variable types",
+			input:    `sum by ($grouping) (rate({job="$job"}[$__rate_interval]))`,
+			matchers: map[string]string{"cluster": "prod"},
+			expected: `sum by($grouping)(rate({job="$job", cluster="prod"}[$__rate_interval]))`,
+		},
+		{
+			name:     "same variable in grouping and label value",
+			input:    `sum by ($job) (rate({job="$job"}[5m]))`,
+			matchers: map[string]string{"env": "prod"},
+			expected: `sum by($job)(rate({job="$job", env="prod"}[5m]))`,
+		},
+		{
+			name:     "by variable with line filters",
+			input:    `sum by ($grouping) (rate({job="test"} |= "error" [5m]))`,
+			matchers: map[string]string{"env": "prod"},
+			expected: `sum by($grouping)(rate({job="test", env="prod"} |= "error"[5m]))`,
+		},
+		{
+			name:     "by with label and variable without comma (Grafana pattern)",
+			input:    `sum by (job $grouping) (rate({app="test"}[5m]))`,
+			matchers: map[string]string{"env": "prod"},
+			expected: `sum by(job,$grouping)(rate({app="test", env="prod"}[5m]))`,
+		},
+		{
+			name:     "by pattern inside string literal must not be modified",
+			input:    `sum by ($grouping) (rate({job="test"} |= "queued by ($queue $priority)" [5m]))`,
+			matchers: map[string]string{"env": "prod"},
+			expected: `sum by($grouping)(rate({job="test", env="prod"} |= "queued by ($queue $priority)"[5m]))`,
+		},
+		{
+			// Regression: backtick filter containing "by ($var1 $var2)" must not have its
+			// content rewritten. Without backtick masking, normalizeGroupingContent would
+			// insert a comma: "by ($queue $priority)" → "by ($queue, $priority)".
+			// Note: the LogQL parser canonicalises backtick strings to double-quoted output.
+			name:     "by pattern inside backtick filter must not be modified",
+			input:    "{app=\"foo\"} |= `queued by ($queue $priority)`",
+			matchers: map[string]string{"env": "prod"},
+			expected: `{app="foo", env="prod"} |= "queued by ($queue $priority)"`,
+		},
+		{
+			// Regression: backtick template in line_format containing "by ($var1 $var2)"
+			// must not have commas inserted. The real by($grouping) clause must still work.
+			name:     "by pattern inside backtick line_format template must not be modified",
+			input:    "sum by ($grouping) (rate({app=\"foo\"} | line_format `{{.level}} by ($grouping $extra)` [5m]))",
+			matchers: map[string]string{"env": "prod"},
+			expected: `sum by($grouping)(rate({app="foo", env="prod"} | line_format "{{.level}} by ($grouping $extra)"[5m]))`,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			result, err := p.Transform(tt.input, &tt.matchers)
+
+			assert.NoError(t, err, "Transform should not return error for grouping variables")
+			assert.Equal(t, tt.expected, result)
+
+			// Verify all original variables are preserved
+			varPattern := regexp.MustCompile(`\$\{[^}]+\}|\$\w+`)
+			inputVars := varPattern.FindAllString(tt.input, -1)
+			resultVars := varPattern.FindAllString(result, -1)
+			assert.Equal(t, len(inputVars), len(resultVars), "All variables should be preserved")
+
+			// Verify matchers were injected as key="value" pairs
+			for key, value := range tt.matchers {
+				expectedMatcher := key + `="` + value + `"`
+				assert.Contains(t, result, expectedMatcher, "Matcher should be injected: %s", expectedMatcher)
+			}
+		})
+	}
+}
+
+func TestLogQLLineFilterOr(t *testing.T) {
+	p := &tool.LogQL{}
+	cases := []struct {
+		name     string
+		input    string
+		matchers map[string]string
+		expected string
+	}{
+		{
+			name:     "or between two string values on same filter type",
+			input:    `{app="foo"} |= "level=error" or "panic:"`,
+			matchers: map[string]string{"env": "prod"},
+			expected: `{app="foo", env="prod"} |= "level=error" or |= "panic:"`,
+		},
+		{
+			name:     "or filter followed by pipeline stage",
+			input:    `{app="foo"} |= "level=error" or "panic:" | logfmt`,
+			matchers: map[string]string{"env": "prod"},
+			expected: `{app="foo", env="prod"} |= "level=error" or |= "panic:" | logfmt`,
+		},
+		{
+			name:     "or filter with negation operator",
+			input:    `{app="foo"} != "debug" or "trace"`,
+			matchers: map[string]string{"env": "prod"},
+			expected: `{app="foo", env="prod"} != "debug" or != "trace"`,
+		},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			result, err := p.Transform(c.input, &c.matchers)
+			assert.NoError(t, err)
+			assert.Equal(t, c.expected, result)
+		})
+	}
+}
+
+func TestLogQLSortFunctions(t *testing.T) {
+	p := &tool.LogQL{}
+	cases := []struct {
+		name     string
+		input    string
+		matchers map[string]string
+		expected string
+	}{
+		{
+			name:     "sort function",
+			input:    `sort(sum by (level) (count_over_time({app="foo"}[5m])))`,
+			matchers: map[string]string{"env": "prod"},
+			expected: `sort(sum by(level)(count_over_time({app="foo", env="prod"}[5m])))`,
+		},
+		{
+			name:     "sort_desc function",
+			input:    `sort_desc(topk(10, sum by (job) (count_over_time({app="foo"}[5m]))))`,
+			matchers: map[string]string{"env": "prod"},
+			expected: `sort_desc(topk(10,sum by(job)(count_over_time({app="foo", env="prod"}[5m]))))`,
+		},
+		{
+			name:     "sort_desc with label matcher injection",
+			input:    `sort_desc(sum by (job) (count_over_time({app="foo"}[5m])))`,
+			matchers: map[string]string{"env": "prod"},
+			expected: `sort_desc(sum by(job)(count_over_time({app="foo", env="prod"}[5m])))`,
+		},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			result, err := p.Transform(c.input, &c.matchers)
+			assert.NoError(t, err)
+			assert.Equal(t, c.expected, result)
+		})
+	}
+}
+
+// Tests that $__auto (Grafana's automatic interval variable) is preserved through
+// transformation, both in plain log queries and wrapped in range aggregations.
+// Sourced from real-world loki-bloom-compactor and loki-operational dashboards.
+func TestLogQLAutoInterval(t *testing.T) {
+	p := &tool.LogQL{}
+	cases := []struct {
+		name     string
+		input    string
+		matchers map[string]string
+		expected string
+	}{
+		{
+			name:     "$__auto in count_over_time with line filter",
+			input:    `count_over_time({container="bloom-compactor"} |= "level=error" [$__auto])`,
+			matchers: map[string]string{"env": "prod"},
+			expected: `count_over_time({container="bloom-compactor", env="prod"} |= "level=error"[$__auto])`,
+		},
+		{
+			name:     "$__auto in rate with logfmt parser and label filter",
+			input:    `sum(rate({job="distributor"} | logfmt | level="error"[$__auto]))`,
+			matchers: map[string]string{"env": "prod"},
+			expected: `sum(rate({job="distributor", env="prod"} | logfmt | level="error"[$__auto]))`,
+		},
+		{
+			name:     "$__auto with logfmt parser and Grafana variables in stream selector",
+			input:    `sum(rate({cluster="$cluster", namespace="$namespace"} | logfmt | level="error"[$__auto]))`,
+			matchers: map[string]string{"juju_model": "test"},
+			expected: `sum(rate({cluster="$cluster", namespace="$namespace", juju_model="test"} | logfmt | level="error"[$__auto]))`,
+		},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			result, err := p.Transform(c.input, &c.matchers)
+			assert.NoError(t, err)
+			assert.Equal(t, c.expected, result)
+		})
+	}
+}
+
+// Tests that backtick strings in label filter comparisons are canonicalised to
+// double-quoted strings by the parser. Sourced from real-world nrpe dashboard.
+func TestLogQLBacktickLabelFilters(t *testing.T) {
+	p := &tool.LogQL{}
+	cases := []struct {
+		name     string
+		input    string
+		matchers map[string]string
+		expected string
+	}{
+		{
+			name:     "backtick string in equality and regex label filters",
+			input:    "{juju_unit=~\"$juju_unit\"} | json | level = `info` | command =~ `.+`",
+			matchers: map[string]string{"juju_model": "test"},
+			expected: `{juju_unit=~"$juju_unit", juju_model="test"} | json | level="info" | command=~".+"`,
+		},
+		{
+			name:     "backtick string in not-equal label filter",
+			input:    "{juju_unit=\"$juju_unit\"} | json | level = `info` | command =~ `.+` | return_code != `0`",
+			matchers: map[string]string{"juju_model": "test"},
+			expected: `{juju_unit="$juju_unit", juju_model="test"} | json | level="info" | command=~".+" | return_code!="0"`,
+		},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			result, err := p.Transform(c.input, &c.matchers)
+			assert.NoError(t, err)
+			assert.Equal(t, c.expected, result)
 		})
 	}
 }

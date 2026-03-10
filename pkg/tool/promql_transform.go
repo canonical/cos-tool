@@ -40,13 +40,14 @@ func (p *PromQL) ValidateConfig(filename string) error {
 }
 
 func (p *PromQL) Transform(arg string, matchers *map[string]string) (string, error) {
-	// Check for unsupported structural variables
-	if err := checkUnsupportedVariables(arg); err != nil {
+	// Replace function name variables first (before other variable processing)
+	processed, funcReplacements, err := replaceVariablesInFunctionNames(arg)
+	if err != nil {
 		return arg, err
 	}
 
 	// Replace Grafana template variables with valid placeholders
-	processed, occurrences := replaceGrafanaVariablesPromQL(arg)
+	processed, occurrences := replaceGrafanaVariablesPromQL(processed)
 
 	exp, err := parser.ParseExpr(processed)
 
@@ -66,6 +67,9 @@ func (p *PromQL) Transform(arg string, matchers *map[string]string) (string, err
 
 	// Restore original Grafana variables
 	result = restoreGrafanaVariablesPromQL(result, occurrences)
+
+	// Restore function name variables
+	result = restoreFunctionNameVariables(result, funcReplacements)
 
 	return result, nil
 }
@@ -109,14 +113,30 @@ var (
 	// Pattern matching Grafana template variables: $var or ${var}
 	varPattern = `\$(?:\w+|\{[^}]+\})`
 
-	// Function name pattern: variable followed by opening parenthesis
-	// Matches: $func(...) or ${func}(...)
-	// Requires variable to be preceded by start, comma, or opening paren
-	functionNamePattern = regexp.MustCompile(`(?:^|[,\(])\s*` + varPattern + `\s*\(`)
+	// Function name replacement pattern: captures function-name variables and following paren
+	// Matches: $func( or ${func:modifier}( where the variable is in a function-call position
+	// Guard: must be preceded by start of string or non-quote/non-word character (avoids matching inside strings)
+	functionNameReplacePattern = regexp.MustCompile(`((?:^|[^"\w])\s*)(` + varPattern + `)(\s*\()`)
 
-	// Grouping label pattern: by($var) or without($var)
-	// Matches variables inside by() or without() clauses
-	groupingLabelPattern = regexp.MustCompile(`\b(?:by|without)\s*\([^)]*` + varPattern)
+	// Pool of valid PromQL range-vector functions used as placeholders for function-name variables
+	// When a variable like ${metric:value} appears as a function name, it's replaced with one of these
+	functionPlaceholderPool = []string{"rate", "irate", "increase", "delta", "changes", "resets", "deriv", "idelta"}
+
+	// Pattern to detect real (non-variable) function calls from the placeholder pool
+	// Used to avoid picking a placeholder that conflicts with an existing function in the expression
+	realFuncCallPattern = regexp.MustCompile(`(?:^|[^\w$])(` + strings.Join(functionPlaceholderPool, "|") + `)\s*\(`)
+
+	// Grouping content pattern: captures the full by(...) or without(...) clause
+	// Used to replace variables inside grouping clauses with valid placeholders
+	groupingContentPattern = regexp.MustCompile(`\b((?:by|without)\s*\()([^)]*)(\))`)
+
+	// Double-quoted string literal pattern: used to mask string contents before grouping replacement
+	// Prevents by/without patterns inside filter strings (e.g. |= "by ($var)") from being rewritten
+	doubleQuotedStringPattern = regexp.MustCompile(`"[^"\\]*(?:\\.[^"\\]*)*"`)
+
+	// Backtick (raw) string literal pattern: LogQL supports backtick strings in filters and
+	// line_format templates (e.g. |= `by ($var)`). Must also be masked before grouping replacement.
+	backtickStringPattern = regexp.MustCompile("`[^`]*`")
 
 	// Full metric name pattern: detects when entire metric name is a variable
 	// Matches: $var{...} or ${var}{...} where variable is the complete metric name
@@ -141,25 +161,127 @@ var (
 	generalVariablePattern = regexp.MustCompile(varPattern)
 )
 
-// checkUnsupportedVariables detects variables in function names and grouping clauses
-func checkUnsupportedVariables(expr string) error {
-	// Check for function name variables: $func(...)
-	if functionNamePattern.MatchString(expr) {
-		return fmt.Errorf("variables in function name positions are not supported: cannot safely replace for validation")
+// replaceVariablesInFunctionNames replaces Grafana variables in function-call positions
+// with valid PromQL function names from a pool, enabling the expression to be parsed.
+// Each distinct variable gets a unique placeholder function that doesn't conflict with
+// existing functions in the expression. Returns the modified query, a map of placeholder
+// function names to original variables, and any error.
+func replaceVariablesInFunctionNames(query string) (string, map[string]string, error) {
+	// Mask string literals so that variables inside quoted label values
+	// (e.g. {desc="$rate(x)"}) are not treated as function-name variables.
+	var literals []string
+	masked := doubleQuotedStringPattern.ReplaceAllStringFunc(query, func(m string) string {
+		idx := len(literals)
+		literals = append(literals, m)
+		return fmt.Sprintf(`"__LIT%d__"`, idx)
+	})
+
+	// Find which functions from the pool are already used in the expression
+	usedFunctions := make(map[string]struct{})
+	for _, m := range realFuncCallPattern.FindAllStringSubmatch(masked, -1) {
+		usedFunctions[m[1]] = struct{}{}
 	}
 
-	// Check for grouping label variables: by($label)
-	if groupingLabelPattern.MatchString(expr) {
-		return fmt.Errorf("variables in grouping (by/without) positions are not supported: cannot safely replace for validation")
+	// Build list of available placeholder functions
+	var available []string
+	for _, fn := range functionPlaceholderPool {
+		if _, used := usedFunctions[fn]; !used {
+			available = append(available, fn)
+		}
 	}
-	return nil
+
+	placeholderToVar := make(map[string]string) // "rate" → "${metric:value}"
+	varToPlaceholder := make(map[string]string) // "${metric:value}" → "rate"
+	availIdx := 0
+	var replaceErr error
+
+	result := functionNameReplacePattern.ReplaceAllStringFunc(masked, func(match string) string {
+		if replaceErr != nil {
+			return match
+		}
+
+		parts := functionNameReplacePattern.FindStringSubmatch(match)
+		if len(parts) < 4 {
+			return match
+		}
+		prefix := parts[1]
+		variable := parts[2]
+		paren := parts[3]
+
+		funcName, exists := varToPlaceholder[variable]
+		if !exists {
+			if availIdx >= len(available) {
+				replaceErr = fmt.Errorf("cannot safely replace function name variable %s: all placeholder functions are already in use", variable)
+				return match
+			}
+			funcName = available[availIdx]
+			availIdx++
+			varToPlaceholder[variable] = funcName
+			placeholderToVar[funcName] = variable
+		}
+
+		return prefix + funcName + paren
+	})
+
+	if replaceErr != nil {
+		return query, nil, replaceErr
+	}
+
+	// Restore string literals (still containing original variables, e.g. $rate(x))
+	for i, lit := range literals {
+		result = strings.ReplaceAll(result, fmt.Sprintf(`"__LIT%d__"`, i), lit)
+	}
+	return result, placeholderToVar, nil
+}
+
+// restoreFunctionNameVariables restores original Grafana variables in function-call positions
+// by replacing placeholder function names back to the original variable strings.
+// Sorts by function name length descending to avoid substring collisions (e.g., "irate" before "rate").
+func restoreFunctionNameVariables(query string, placeholderToVar map[string]string) string {
+	if len(placeholderToVar) == 0 {
+		return query
+	}
+	// Sort by length descending to prevent "rate(" matching inside "irate("
+	funcNames := make([]string, 0, len(placeholderToVar))
+	for fn := range placeholderToVar {
+		funcNames = append(funcNames, fn)
+	}
+	slices.SortFunc(funcNames, func(a, b string) int {
+		return len(b) - len(a)
+	})
+
+	result := query
+
+	// Mask string literals to avoid replacing placeholder function names that appear
+	// inside quoted label values (e.g. {desc="rate(x)"}).
+	var literals []string
+	result = doubleQuotedStringPattern.ReplaceAllStringFunc(result, func(m string) string {
+		idx := len(literals)
+		literals = append(literals, m)
+		return fmt.Sprintf(`"__LIT%d__"`, idx)
+	})
+
+	for _, funcName := range funcNames {
+		result = strings.ReplaceAll(result, funcName+"(", placeholderToVar[funcName]+"(")
+	}
+
+	// Restore original string literals.
+	for i, lit := range literals {
+		result = strings.ReplaceAll(result, fmt.Sprintf(`"__LIT%d__"`, i), lit)
+	}
+	return result
 }
 
 // replaceGrafanaVariablesPromQL replaces Grafana variables with parseable placeholders
 // Processes variables in order: full metric names, metric name components, durations, and label values
 func replaceGrafanaVariablesPromQL(query string) (string, map[string]string) {
 	replacements := make(map[string]string)
-	variableToPlaceholder := make(map[string]string) // Track same variable → same placeholder
+	// Cache keyed by (format, variable) so that the same variable can get different placeholder
+	// kinds depending on position: e.g. __g%d__ for grouping, %d for durations/values.
+	// Without this, a variable that appears in both a grouping clause and a duration bracket
+	// would reuse the __g%d__ identifier in the duration position, causing a parse error.
+	type cacheKey struct{ format, variable string }
+	variableToPlaceholder := make(map[cacheKey]string)
 	// counter generates unique numeric placeholders starting at 99990000
 	// Placeholders are needed because Grafana variables ($var, ${var}) are not valid PromQL syntax
 	// and would cause parsing errors. We replace them with valid placeholders, parse/transform the query,
@@ -168,26 +290,83 @@ func replaceGrafanaVariablesPromQL(query string) (string, map[string]string) {
 	counter := 99990000
 
 	// Helper closure to get or create placeholder for a variable
-	// Ensures same variable always gets same placeholder across all positions
+	// Ensures same variable in the same syntactic position always gets the same placeholder
 	getPlaceholder := func(variable string, format string) string {
-		if placeholder, exists := variableToPlaceholder[variable]; exists {
+		key := cacheKey{format, variable}
+		if placeholder, exists := variableToPlaceholder[key]; exists {
 			return placeholder
 		}
 
 		placeholder := fmt.Sprintf(format, counter)
-		variableToPlaceholder[variable] = placeholder
+		variableToPlaceholder[key] = placeholder
 		replacements[placeholder] = variable
 		counter++
 		return placeholder
 	}
 
 	result := query
+	result = replaceVariablesInGrouping(result, generalVariablePattern, getPlaceholder)
 	result = replaceFullMetricNameVariables(result, getPlaceholder)
 	result = replaceVariablesInMetricNameComponents(result, getPlaceholder)
 	result = replaceVariablesInDurations(result, getPlaceholder)
 	result = replaceVariablesInValues(result, getPlaceholder)
 
 	return result, replacements
+}
+
+// replaceVariablesInGrouping replaces variables inside by() and without() clauses.
+// Uses __g%d__ format to avoid collisions with numeric placeholders used elsewhere.
+// varPat is the variable pattern for the specific query language (PromQL or LogQL).
+// Examples: by($var) → by(__g99990000__), without(${label}) → without(__g99990001__)
+func replaceVariablesInGrouping(query string, varPat *regexp.Regexp, getPlaceholder func(string, string) string) string {
+	// Mask both double-quoted and backtick string literals so that by/without patterns
+	// inside strings (e.g. |= "queued by ($q)" or | line_format `by ($q $r)`) are not rewritten.
+	var literals []string
+	mask := func(m string) string {
+		idx := len(literals)
+		literals = append(literals, m)
+		return fmt.Sprintf(`"__LIT%d__"`, idx)
+	}
+	masked := doubleQuotedStringPattern.ReplaceAllStringFunc(query, mask)
+	masked = backtickStringPattern.ReplaceAllStringFunc(masked, mask)
+
+	result := groupingContentPattern.ReplaceAllStringFunc(masked, func(match string) string {
+		parts := groupingContentPattern.FindStringSubmatch(match)
+		if len(parts) < 4 {
+			return match
+		}
+		prefix := parts[1]  // "by(" or "without("
+		content := parts[2] // label list inside parentheses
+		suffix := parts[3]  // ")"
+
+		if !varPat.MatchString(content) {
+			return match
+		}
+
+		newContent := varPat.ReplaceAllStringFunc(content, func(v string) string {
+			return getPlaceholder(v, "__g%d__")
+		})
+		newContent = normalizeGroupingContent(newContent)
+		return prefix + newContent + suffix
+	})
+
+	// Restore original string literals
+	for i, lit := range literals {
+		result = strings.ReplaceAll(result, fmt.Sprintf(`"__LIT%d__"`, i), lit)
+	}
+	return result
+}
+
+// normalizeGroupingContent ensures proper comma separation between labels in grouping clauses.
+// In Grafana, users may write "by (label $var)" without commas since $var is interpolated as a string.
+// The PromQL/LogQL parser requires commas, so we normalize "label __g0__" to "label, __g0__".
+func normalizeGroupingContent(content string) string {
+	parts := strings.Split(content, ",")
+	var tokens []string
+	for _, part := range parts {
+		tokens = append(tokens, strings.Fields(part)...)
+	}
+	return strings.Join(tokens, ", ")
 }
 
 // replaceFullMetricNameVariables replaces entire metric names that are variables

@@ -1,10 +1,13 @@
 # Add GOPATH/bin to PATH for this Makefile
 export PATH := $(shell go env GOPATH)/bin:$(PATH)
 
-.PHONY: test lint vuln-check build
+.PHONY: test lint vuln-check build test-integration
 
 test:
 	go test ./... -coverprofile coverage.out
+
+test-integration: build
+	EXPECTED_LABEL='juju_model="test-integration"' ./tests/integration/run_integration_tests.sh --label-matcher juju_model=test-integration
 
 lint:
 	@if ! command -v golangci-lint >/dev/null 2>&1; then \
@@ -61,4 +64,4 @@ help:
 	@echo "  clean            - Clean build artifacts and cache"
 	@echo "  fmt              - Format code"
 	@echo "  deps             - Download and tidy dependencies"
-	@echo "  help             - Show this help message"
+	@echo "  test-integration    - Run integration tests against real dashboard JSON files"

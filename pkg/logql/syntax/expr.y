@@ -110,7 +110,7 @@ import (
                   OPEN_PARENTHESIS CLOSE_PARENTHESIS BY WITHOUT COUNT_OVER_TIME RATE SUM AVG MAX MIN COUNT STDDEV STDVAR BOTTOMK TOPK
                   BYTES_OVER_TIME BYTES_RATE BOOL JSON REGEXP LOGFMT PIPE LINE_FMT LABEL_FMT UNWRAP AVG_OVER_TIME SUM_OVER_TIME MIN_OVER_TIME
                   MAX_OVER_TIME STDVAR_OVER_TIME STDDEV_OVER_TIME QUANTILE_OVER_TIME BYTES_CONV DURATION_CONV DURATION_SECONDS_CONV
-                  FIRST_OVER_TIME LAST_OVER_TIME ABSENT_OVER_TIME LABEL_REPLACE UNPACK OFFSET PATTERN IP ON IGNORING GROUP_LEFT GROUP_RIGHT
+                  FIRST_OVER_TIME LAST_OVER_TIME ABSENT_OVER_TIME LABEL_REPLACE UNPACK OFFSET PATTERN IP ON IGNORING GROUP_LEFT GROUP_RIGHT SORT SORT_DESC
 
 // Operators are listed with increasing precedence.
 %left <binOp> OR
@@ -257,8 +257,9 @@ lineFilter:
   ;
 
 lineFilters:
-    lineFilter                { $$ = $1 }
-  | lineFilters lineFilter    { $$ = newNestedLineFilterExpr($1, $2) }
+    lineFilter                        { $$ = $1 }
+  | lineFilters lineFilter            { $$ = newNestedLineFilterExpr($1, $2) }
+  | lineFilters OR STRING             { $$ = newOrLineFilterExprFromFilter($1, $3) }
   ;
 
 labelParser:
@@ -443,15 +444,17 @@ literalExpr:
            ;
 
 vectorOp:
-        SUM     { $$ = OpTypeSum }
-      | AVG     { $$ = OpTypeAvg }
-      | COUNT   { $$ = OpTypeCount }
-      | MAX     { $$ = OpTypeMax }
-      | MIN     { $$ = OpTypeMin }
-      | STDDEV  { $$ = OpTypeStddev }
-      | STDVAR  { $$ = OpTypeStdvar }
-      | BOTTOMK { $$ = OpTypeBottomK }
-      | TOPK    { $$ = OpTypeTopK }
+        SUM      { $$ = OpTypeSum }
+      | AVG      { $$ = OpTypeAvg }
+      | COUNT    { $$ = OpTypeCount }
+      | MAX      { $$ = OpTypeMax }
+      | MIN      { $$ = OpTypeMin }
+      | STDDEV   { $$ = OpTypeStddev }
+      | STDVAR   { $$ = OpTypeStdvar }
+      | BOTTOMK  { $$ = OpTypeBottomK }
+      | TOPK     { $$ = OpTypeTopK }
+      | SORT     { $$ = OpTypeSort }
+      | SORT_DESC { $$ = OpTypeSortDesc }
       ;
 
 rangeOp:
