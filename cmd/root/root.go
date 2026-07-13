@@ -76,8 +76,7 @@ EXAMPLES:
 			Aliases:   []string{"v", "lint", "l", "validate"},
 			Usage:     "Validate Prometheus/Loki alert rules",
 			ArgsUsage: "<rule_file.yaml> [rule_file.yaml ...]",
-			Description: `Validate that alert rules can be loaded successfully by Prometheus (PromQL)
-or Loki (LogQL). Use the global --format flag to select the rule language.
+			Description: `Validate that alert rules are valid according to the Prometheus (PromQL) or Loki (LogQL) rule formats. Use the global --format flag to select the rule language.
 
 Rules are provided as one or more file paths.
 
