@@ -13,8 +13,8 @@ coverage:
 	fi
 	@echo "Running tests with coverage..."
 	@go test ./... -coverprofile coverage.out
-	@mkdir -p coverage/xml
-	@gocover-cobertura -ignore-files '\.(y|rl)$$|yaccpar$$' < coverage.out > coverage/xml/coverage.xml
+	@mkdir -p cover
+	@gocover-cobertura -ignore-files '\.(y|rl)$$|yaccpar$$' < coverage.out > cover/coverage.xml
 
 test-integration: build
 	EXPECTED_LABEL='juju_model="test-integration"' ./tests/integration/run_integration_tests.sh --label-matcher juju_model=test-integration
