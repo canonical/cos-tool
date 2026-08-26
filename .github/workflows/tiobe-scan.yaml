@@ -23,6 +23,9 @@ jobs:
         run: |
           go build -o cos-tool ./cmd/root/
 
+      - name: Generate coverage report
+        run: make coverage
+
       - name: Run TICS analysis with github-action
         uses: tiobe/tics-github-action@v3
         with:

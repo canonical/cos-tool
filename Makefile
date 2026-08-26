@@ -1,10 +1,20 @@
 # Add GOPATH/bin to PATH for this Makefile
 export PATH := $(shell go env GOPATH)/bin:$(PATH)
 
-.PHONY: test lint vuln-check build test-integration
+.PHONY: test lint vuln-check build test-integration coverage
 
 test:
 	go test ./... -coverprofile coverage.out
+
+coverage:
+	@if ! command -v gocover-cobertura >/dev/null 2>&1; then \
+		echo "Installing gocover-cobertura..."; \
+		go install github.com/boumenot/gocover-cobertura@latest; \
+	fi
+	@echo "Running tests with coverage..."
+	@go test ./... -coverprofile coverage.out
+	@mkdir -p coverage/xml
+	@gocover-cobertura -ignore-files '\.(y|rl)$$|yaccpar$$' < coverage.out > coverage/xml/coverage.xml
 
 test-integration: build
 	EXPECTED_LABEL='juju_model="test-integration"' ./tests/integration/run_integration_tests.sh --label-matcher juju_model=test-integration
@@ -65,3 +75,4 @@ help:
 	@echo "  fmt              - Format code"
 	@echo "  deps             - Download and tidy dependencies"
 	@echo "  test-integration    - Run integration tests against real dashboard JSON files"
+	@echo "  coverage         - Run tests and generate Cobertura coverage XML for TICS"
