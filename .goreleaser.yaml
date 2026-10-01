@@ -7,3 +7,4 @@ builds:
       - arm64
       - ppc64le
       - s390x
+      - riscv64
