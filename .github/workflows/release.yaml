@@ -75,6 +75,11 @@ jobs:
         with:
           name: cos-tool-s390x
           path: dist/cos-tool_linux_s390x/cos-tool
+      - name: Upload riscv64 assets
+        uses: actions/upload-artifact@v4
+        with:
+          name: cos-tool-riscv64
+          path: dist/cos-tool_linux_riscv64_rva20u64/cos-tool
 
   ghrelease:
     name: Create GitHub Release
