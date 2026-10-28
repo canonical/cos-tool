@@ -19,6 +19,7 @@ coverage:
 test-integration: build
 	EXPECTED_LABEL='juju_model="test-integration"' ./tests/integration/run_integration_tests.sh --label-matcher juju_model=test-integration
 	EXPECTED_LABEL='juju_model=test-integration' ./tests/integration/run_batch_integration_tests.sh --label-matcher juju_model=test-integration
+	python3 ./tests/integration/batch_example.py ./bin/cos-tool
 
 # Benchmarks are excluded from `make test` by Go's defaults, and deliberately:
 # the consecutive-invocation case spawns one process per expression.

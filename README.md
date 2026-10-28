@@ -179,6 +179,10 @@ zero.
 
 #### Calling from Python
 
+A complete, runnable version of this is in
+[`tests/integration/batch_example.py`](tests/integration/batch_example.py),
+which doubles as a test of the guarantees below.
+
 ```python
 import json, subprocess, tempfile, pathlib
 
