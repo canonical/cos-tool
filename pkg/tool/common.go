@@ -2,10 +2,11 @@ package tool
 
 import (
 	"errors"
+	"strings"
+
 	logqlparser "github.com/canonical/cos-tool/pkg/logql/syntax"
 	"github.com/prometheus/prometheus/model/rulefmt"
 	"github.com/prometheus/prometheus/promql/parser"
-	"strings"
 )
 
 type AlertRuleFile struct {
@@ -25,8 +26,14 @@ type LogQL struct {
 	sortedMatchers *[]string
 }
 
-type Checker interface {
+// Transformer is the expression-rewriting subset of Checker. Batch mode needs
+// only this, so it depends only on this.
+type Transformer interface {
 	Transform(arg string, matchers *map[string]string) (string, error)
+}
+
+type Checker interface {
+	Transformer
 	ValidateRules(filename string, data []byte) (*rulefmt.RuleGroups, error)
 	ValidateConfig(filename string) error
 }

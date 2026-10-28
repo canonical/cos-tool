@@ -1,7 +1,7 @@
 # Add GOPATH/bin to PATH for this Makefile
 export PATH := $(shell go env GOPATH)/bin:$(PATH)
 
-.PHONY: test lint vuln-check build test-integration coverage
+.PHONY: test lint vuln-check build test-integration bench coverage
 
 test:
 	go test ./... -coverprofile coverage.out
@@ -18,6 +18,18 @@ coverage:
 
 test-integration: build
 	EXPECTED_LABEL='juju_model="test-integration"' ./tests/integration/run_integration_tests.sh --label-matcher juju_model=test-integration
+	EXPECTED_LABEL='juju_model=test-integration' ./tests/integration/run_batch_integration_tests.sh --label-matcher juju_model=test-integration
+
+# Benchmarks are excluded from `make test` by Go's defaults, and deliberately:
+# the consecutive-invocation case spawns one process per expression.
+# -benchtime 1x because the spawn benchmarks measure a ratio, not a rate, and
+# repeating them adds nothing; -v to surface the comparison table.
+bench:
+	@echo "Benchmarking batch transform throughput..."
+	go test ./pkg/batch/ -run '^$$' -bench . -benchmem
+	@echo ""
+	@echo "Comparing batch against per-expression invocation..."
+	go test ./cmd/root/ -run '^$$' -bench Spawn -benchtime 1x -v
 
 lint:
 	@if ! command -v golangci-lint >/dev/null 2>&1; then \
@@ -75,4 +87,5 @@ help:
 	@echo "  fmt              - Format code"
 	@echo "  deps             - Download and tidy dependencies"
 	@echo "  test-integration    - Run integration tests against real dashboard JSON files"
+	@echo "  bench            - Benchmark batch throughput and compare against per-expression spawning"
 	@echo "  coverage         - Run tests and generate Cobertura coverage XML for TICS"

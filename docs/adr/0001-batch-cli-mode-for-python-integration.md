@@ -31,6 +31,13 @@ throughput of the resulting batch mode should be measured once
 implemented, and a target set then — informed by real numbers rather
 than estimates.
 
+> **Settled after implementation.** Both figures were measured and the
+> target set: 50,000 expressions in **under 30 seconds** end to end,
+> against **~2.5-5.5s** measured. The ~20ms spawn estimate above was
+> confirmed at ~10-17ms per invocation. See
+> [Measured throughput](../design/0001-batch-transform-interfaces.md#measured-throughput)
+> for the numbers and `make bench` to reproduce them.
+
 ### Scope
 
 In scope: the per-expression label-injection operation (`transform`),
@@ -230,12 +237,22 @@ Example result lines:
 
 ```jsonl
 {"version":1,"id":"rule-42","status":"ok","expr":"rate(http_requests_total{job=\"myjob\",juju_application=\"proxy\",juju_model=\"cos\",juju_model_uuid=\"12345\",juju_unit=\"proxy/1\"}[5m]) > 0.5"}
-{"version":1,"id":"rule-43","status":"error","error":"parse error at line 1, col 5: syntax error"}
-{"version":1,"line":44,"status":"malformed","error":"missing required field \"id\""}
+{"version":1,"id":"rule-43","status":"ok","expr":"sum(rate({job=\"nginx\", juju_application=\"nginx\", juju_model=\"cos\", juju_model_uuid=\"12345\"}[5m]))"}
+{"version":1,"id":"rule-44","status":"ok","expr":"up{juju_model=\"cos\",juju_model_uuid=\"12345\"} == 0"}
 ```
 
 `rule-44`, which carries no `matchers` of its own, is transformed with
-just the two batch-wide defaults.
+just the two batch-wide defaults. A line that could not be read as a
+request at all would instead produce a result such as:
+
+```jsonl
+{
+  "version": 1,
+  "line": 7,
+  "status": "malformed",
+  "error": "missing required field \"id\""
+}
+```
 
 ### Semantics
 
@@ -308,6 +325,11 @@ just the two batch-wide defaults.
   per-expression work turns out to dominate at this volume, further work
   (concurrency within the batch, caller-side deduplication, or cheaper
   transformation) is a separate decision and a separate ADR.
+  **Resolved:** per-expression work does not dominate — it is roughly two
+  orders of magnitude smaller than the spawn cost it replaces — so none of
+  that further work is needed. The target is recorded in the design
+  document rather than here, so that it can be revised against new
+  measurements without reopening an accepted decision.
 - `transform` gains `--batch`, `--out`, and `--batch-version`;
   `validate-rules` and `validate-config` are unchanged and continue to be
   invoked as today. Existing single-expression invocation behavior —
