@@ -25,6 +25,11 @@ per-rule Juju topology label set (`juju_model`, `juju_model_uuid`,
 `juju_application`, `juju_charm`, and optionally a user-supplied
 `juju_unit`).
 
+A single batch always consists of expressions in one query language: the
+charm validates/transforms Mimir (PromQL) rules and Loki (LogQL) rules
+separately, as two distinct batches, never intermixed. This matches how the
+existing CLI already scopes `--format` globally per invocation.
+
 The current CLI exposes one expression (or one file) per process invocation
 (`cos-tool --format promql transform -- '<expr>'`,
 `cos-tool validate-rules file.yaml`). Using it as-is from Python means
@@ -89,10 +94,13 @@ Add a new `batch` subcommand to `cos-tool` that:
   cheap, stateless-per-call, and only carry mutable fields scoped to a
   single call — each unit of work gets its own fresh `PromQL{}`/`LogQL{}`
   instance to avoid data races.
-- Supports a **per-request `format` field** (`"promql"` or `"logql"`),
-  since a single batch may contain a mix of Mimir/Prometheus and Loki rule
-  expressions. The existing global `--format` flag is not sufficient for
-  batch mode.
+- Reuses the existing **global `--format` flag** (`promql` or `logql`) to
+  select the expression language for the whole batch, consistent with
+  `transform` and `validate-rules` today. A single batch invocation is
+  always single-format; callers needing both Mimir and Loki rules processed
+  invoke `cos-tool --format promql batch` and
+  `cos-tool --format logql batch` as two separate invocations. No
+  per-request `format` field is needed.
 - Supports a **per-request `matchers` field** (map of label name → value),
   since Juju topology labels vary per rule (most rules have no explicit
   `juju_unit`, but some do, and this must be respected per-rule rather
@@ -113,13 +121,14 @@ Add a new `batch` subcommand to `cos-tool` that:
 
 ### Request/response shape
 
+Invoked as `cos-tool --format promql batch` (or `--format logql batch`).
+
 Request (stdin, one per line):
 
 ```json
 {
   "id": 0,
   "op": "transform",
-  "format": "promql",
   "expr": "rate(foo[5m])",
   "matchers": { "juju_model": "cos" }
 }
@@ -144,9 +153,13 @@ recovered internal panic:
 
 ### Changes required in the Go codebase
 
-- `cmd/root/root.go`: add a `batch` command. Dispatch per-request `op`
-  (`transform`, `validate-rules`, `validate-config`) and `format` to a
-  freshly constructed `tool.PromQL{}` / `tool.LogQL{}` per request.
+- `cmd/root/root.go`: add a `batch` command. It reuses the existing
+  `Before` hook that already resolves the global `--format` flag into a
+  `tool.Checker` implementation; batch mode constructs one fresh
+  `tool.PromQL{}` / `tool.LogQL{}` instance per request (never a shared
+  instance across requests, to avoid data races under concurrent
+  processing) and dispatches on the per-request `op` field
+  (`transform`, `validate-rules`, `validate-config`).
 - Introduce a bounded worker pool (e.g. `errgroup` or a simple channel-based
   pool) to process requests concurrently, writing results to stdout from a
   single goroutine to keep output well-formed (one JSON object per line,
@@ -165,14 +178,17 @@ recovered internal panic:
 
 ### Changes required on the Python (charm) side
 
-- A thin batching facade that collects `(expr, matchers, format)` requests
-  from in-memory rule dicts during a single hook invocation, assigns each
-  an incrementing integer `id`, and defers actual execution until an
-  explicit flush point.
-- On flush: serialize all pending requests to JSONL, invoke
-  `cos-tool batch` exactly once via `subprocess.run` with the full payload
-  on stdin, parse the JSONL result stream, and apply results back to the
-  originating in-memory rule objects by `id`.
+- A thin batching facade, one per query language (PromQL, LogQL), that
+  collects `(expr, matchers)` requests from in-memory rule dicts during a
+  single hook invocation, assigns each an incrementing integer `id`, and
+  defers actual execution until an explicit flush point.
+- On flush: serialize all pending requests for that language to JSONL,
+  invoke `cos-tool --format <promql|logql> batch` exactly once via
+  `subprocess.run` with the full payload on stdin, parse the JSONL result
+  stream, and apply results back to the originating in-memory rule objects
+  by `id`. If both Mimir and Loki rules need processing in the same hook
+  invocation, this results in exactly two `cos-tool` invocations total
+  (one per format), not one per expression.
 - Treat a non-zero exit code as "the batch mechanism failed" (fatal);
   treat `ok: false` on an individual result as "this expression was
   invalid" (non-fatal, logged with file/rule context that only Python
