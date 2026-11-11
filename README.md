@@ -146,6 +146,12 @@ Alert rules in either Loki or Prometheus syntax can be validated by running:
 $ ./cos-tool [-f logql] validate-rules rule_file.yaml [rule_file2.yaml ...]
 ```
 
+When no file is given, the rules are read from standard input:
+
+```bash
+$ cat rule_file.yaml | ./cos-tool [-f logql] validate-rules
+```
+
 If the file is valid, there is no output and the exit code is zero.
 
 If there are validation failures, they are printed to stderr and the exit code is non-zero:

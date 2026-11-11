@@ -3,12 +3,14 @@ package root
 import (
 	"context"
 	"fmt"
+	"io"
 	"log"
 	"os"
 	"strings"
 
 	"github.com/canonical/cos-tool/pkg/tool"
 	cli "github.com/urfave/cli/v2"
+	"golang.org/x/term"
 )
 
 // Define a private, unique key type
@@ -78,7 +80,8 @@ EXAMPLES:
 			ArgsUsage: "<rule_file.yaml> [rule_file.yaml ...]",
 			Description: `Validate that alert rules are valid according to the Prometheus (PromQL) or Loki (LogQL) rule formats. Use the global --format flag to select the rule language.
 
-Rules are provided as one or more file paths.
+Rules are provided as one or more file paths, or piped on standard input when
+no file path is given.
 
 On success there is no output and the exit code is zero. On failure, the
 validation errors are printed to stderr and the exit code is non-zero.
@@ -87,16 +90,21 @@ EXAMPLES:
    # Validate one or more rule files
    cos-tool validate-rules rules.yaml more-rules.yaml
 
+   # Validate rules read from standard input
+   cat rules.yaml | cos-tool validate-rules
+
    # Validate Loki (LogQL) rules
    cos-tool --format logql validate-rules loki-rules.yaml`,
 			Action: func(c *cli.Context) error {
 				args := c.Args()
+				validator := c.Context.Value(implKey).(tool.Checker)
 
 				if args.Len() < 1 {
-					log.Fatal("Expected at least one rule file to validate.")
+					if stdinIsTerminal() {
+						log.Fatal("Expected at least one rule file to validate, or rules piped on standard input.")
+					}
+					return validateStream(validator, "stdin", os.Stdin)
 				}
-
-				validator := c.Context.Value(implKey).(tool.Checker)
 
 				for _, f := range args.Slice() {
 					data, err := os.ReadFile(f)
@@ -152,6 +160,24 @@ files. Use the global --format flag to select the config type.`,
 
 		return nil
 	},
+}
+
+func stdinIsTerminal() bool {
+	return term.IsTerminal(int(os.Stdin.Fd()))
+}
+
+func validateStream(validator tool.Checker, name string, r io.Reader) error {
+	data, err := io.ReadAll(r)
+	if err != nil {
+		return err
+	}
+
+	_, err = validator.ValidateRules(name, data)
+	if err != nil {
+		return cli.Exit(err, 1)
+	}
+
+	return nil
 }
 
 func Execute() error {
