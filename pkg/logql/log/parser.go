@@ -303,6 +303,62 @@ func (l *LogfmtParser) Process(line []byte, lbs *LabelsBuilder) ([]byte, bool) {
 
 func (l *LogfmtParser) RequiredLabelNames() []string { return []string{} }
 
+type LogfmtExpressionParser struct {
+	dec         *logfmt.Decoder
+	expressions map[string][]string
+	keys        internedStringSet
+}
+
+func NewLogfmtExpressionParser(expressions []LogfmtExpression) (*LogfmtExpressionParser, error) {
+	identifiersByKey := make(map[string][]string, len(expressions))
+
+	for _, exp := range expressions {
+		if !model.UTF8Validation.IsValidLabelName(exp.Identifier) {
+			return nil, fmt.Errorf("invalid extracted label name '%s'", exp.Identifier)
+		}
+
+		identifiersByKey[exp.Expression] = append(identifiersByKey[exp.Expression], exp.Identifier)
+	}
+
+	return &LogfmtExpressionParser{
+		dec:         logfmt.NewDecoder(nil),
+		expressions: identifiersByKey,
+		keys:        internedStringSet{},
+	}, nil
+}
+
+func (l *LogfmtExpressionParser) Process(line []byte, lbs *LabelsBuilder) ([]byte, bool) {
+	if lbs.ParserLabelHints().NoLabels() {
+		return line, true
+	}
+	l.dec.Reset(line)
+	for l.dec.ScanKeyval() {
+		identifiers, ok := l.expressions[string(l.dec.Key())]
+		if !ok {
+			continue
+		}
+		val := l.dec.Value()
+		if bytes.ContainsRune(val, utf8.RuneError) {
+			val = nil
+		}
+		for _, identifier := range identifiers {
+			key, _ := l.keys.Get(unsafeGetBytes(identifier), func() (string, bool) {
+				if lbs.BaseHas(identifier) {
+					return identifier + duplicateSuffix, true
+				}
+				return identifier, true
+			})
+			lbs.Set(key, string(val))
+		}
+	}
+	if l.dec.Err() != nil {
+		lbs.SetErr(errLogfmt)
+	}
+	return line, true
+}
+
+func (l *LogfmtExpressionParser) RequiredLabelNames() []string { return []string{} }
+
 type PatternParser struct {
 	matcher pattern.Matcher
 	names   []string

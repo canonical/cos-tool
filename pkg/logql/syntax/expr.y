@@ -54,6 +54,9 @@ import (
   JSONExpressionParser    *JSONExpressionParser
   JSONExpression          log.JSONExpression
   JSONExpressionList      []log.JSONExpression
+  LogfmtExpressionParser  *LogfmtExpressionParser
+  LogfmtExpression        log.LogfmtExpression
+  LogfmtExpressionList    []log.LogfmtExpression
   UnwrapExpr              *UnwrapExpr
   OffsetExpr              *OffsetExpr
 }
@@ -98,6 +101,9 @@ import (
 %type <JSONExpressionParser>  jsonExpressionParser
 %type <JSONExpression>        jsonExpression
 %type <JSONExpressionList>    jsonExpressionList
+%type <LogfmtExpressionParser> logfmtExpressionParser
+%type <LogfmtExpression>      logfmtExpression
+%type <LogfmtExpressionList>  logfmtExpressionList
 %type <UnwrapExpr>            unwrapExpr
 %type <UnitFilter>            unitFilter
 %type <IPLabelFilter>         ipLabelFilter
@@ -242,6 +248,7 @@ pipelineStage:
    lineFilters                   { $$ = $1 }
   | PIPE labelParser             { $$ = $2 }
   | PIPE jsonExpressionParser    { $$ = $2 }
+  | PIPE logfmtExpressionParser  { $$ = $2 }
   | PIPE labelFilter             { $$ = &LabelFilterExpr{LabelFilterer: $2 }}
   | PIPE lineFormatExpr          { $$ = $2 }
   | PIPE labelFormatExpr         { $$ = $2 }
@@ -272,6 +279,9 @@ labelParser:
 
 jsonExpressionParser:
     JSON jsonExpressionList { $$ = newJSONExpressionParser($2) }
+
+logfmtExpressionParser:
+    LOGFMT logfmtExpressionList { $$ = newLogfmtExpressionParser($2) }
 
 lineFormatExpr: LINE_FMT STRING { $$ = newLineFmtExpr($2) };
 
@@ -307,6 +317,16 @@ jsonExpression:
 jsonExpressionList:
     jsonExpression                          { $$ = []log.JSONExpression{$1} }
   | jsonExpressionList COMMA jsonExpression { $$ = append($1, $3) }
+  ;
+
+logfmtExpression:
+    IDENTIFIER EQ STRING { $$ = log.NewLogfmtExpr($1, $3) }
+  | IDENTIFIER { $$ = log.NewLogfmtExpr($1, $1) }
+  ;
+
+logfmtExpressionList:
+    logfmtExpression                              { $$ = []log.LogfmtExpression{$1} }
+  | logfmtExpressionList COMMA logfmtExpression   { $$ = append($1, $3) }
   ;
 
 ipLabelFilter:
