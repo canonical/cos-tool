@@ -10,6 +10,7 @@ import (
 
 	"github.com/canonical/cos-tool/pkg/tool"
 	cli "github.com/urfave/cli/v2"
+	"golang.org/x/term"
 )
 
 // Define a private, unique key type
@@ -162,8 +163,7 @@ files. Use the global --format flag to select the config type.`,
 }
 
 func stdinIsTerminal() bool {
-	info, err := os.Stdin.Stat()
-	return err == nil && info.Mode()&os.ModeCharDevice != 0
+	return term.IsTerminal(int(os.Stdin.Fd()))
 }
 
 func validateStream(validator tool.Checker, name string, r io.Reader) error {

@@ -50,6 +50,24 @@ func TestValidateStream(t *testing.T) {
 	}
 }
 
+func TestStdinIsNotTerminalForNullDevice(t *testing.T) {
+	stdin, err := os.Open(os.DevNull)
+	if err != nil {
+		t.Fatalf("open null device: %v", err)
+	}
+
+	origStdin := os.Stdin
+	os.Stdin = stdin
+	t.Cleanup(func() {
+		os.Stdin = origStdin
+		_ = stdin.Close()
+	})
+
+	if stdinIsTerminal() {
+		t.Fatal("stdinIsTerminal() = true for the null device, want false")
+	}
+}
+
 func TestValidateRulesReadsStdin(t *testing.T) {
 	tests := []struct {
 		name     string
